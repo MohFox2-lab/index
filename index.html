@@ -102,6 +102,10 @@
 <body class="min-h-screen">
 <div id="app" class="max-w-4xl mx-auto p-3 md:p-6"></div>
 
+<!-- Firebase (لإرسال رمز الإنجاز مباشرة من داخل التطبيق لموقع المعلم) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
 <script>
 
 const TOPIC_TITLES = ["أسلوب العلم", "حل المشكلات بطريقة علمية", "المحاليل والذائبية (المادة النقية والمخاليط)", "المركبات الجزيئية (الروابط التساهمية والأيونية)", "الذائبية", "المحاليل (التشبع والتركيز)", "المحاليل الحمضية", "المحاليل القاعدية", "الرقم الهيدروجيني PH", "المادة وحالاتها", "الحرارة وتحولات المادة", "التغيرات بين الحالات الصلبة والسائلة والغازية", "سلوك الموائع (الضغط)", "التغير في ضغط الغاز", "الطفو والانغمار", "مبدأ باسكال", "الطاقة", "تحولات الطاقة", "توليد الطاقة الكهربائية", "الدم والدورة الدموية", "الجهاز الدوري والجهاز اللمفي", "المناعة والمرض", "الجهاز الهضمي والتغذية", "المواد الغذائية", "جهاز التنفس", "جهاز الإخراج", "المرض عبر التاريخ"];
@@ -454,6 +458,83 @@ function copyToken(){
   const t = state.quiz.token;
   if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(() => alert('تم نسخ الرمز ✅'), () => prompt('انسخ الرمز:', t));
   else prompt('انسخ الرمز:', t);
+}
+
+// ============================= إرسال رمز الإنجاز مباشرة للمعلم =============================
+const TEACHER_SITE_CONFIG = {
+  apiKey: "AIzaSyCx6sM4KaYXCXABxE9ieio_QhPDX-SP6xg",
+  authDomain: "manhaj-science1.firebaseapp.com",
+  projectId: "manhaj-science1",
+  storageBucket: "manhaj-science1.firebasestorage.app",
+  messagingSenderId: "275504808566",
+  appId: "1:275504808566:web:16d3951b587e2727c9d557"
+};
+let _teacherDb = null;
+function getTeacherDb(){
+  if(_teacherDb) return _teacherDb;
+  if(!window.firebase || !firebase.firestore) return null;
+  try{
+    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(TEACHER_SITE_CONFIG);
+    _teacherDb = firebase.firestore();
+    return _teacherDb;
+  }catch(e){ console.error(e); return null; }
+}
+
+async function sendTokenToTeacher(){
+  const btn = document.getElementById('sendTokenBtn');
+  const msgEl = document.getElementById('sendTokenMsg');
+  if(!btn || !msgEl) return;
+
+  const db = getTeacherDb();
+  if(!db){
+    msgEl.textContent = 'تعذّر الاتصال بخدمة الإرسال. انسخ الرمز وأرسله يدويًا للمعلم.';
+    msgEl.className = 'text-xs mt-2';
+    msgEl.style.color = '#e11d48';
+    return;
+  }
+
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'جارٍ الإرسال…';
+  msgEl.textContent = '';
+
+  try{
+    const token = state.quiz.token;
+    const payload = unb64u(token.split('.')[0]);
+    const f = payload.split('|');
+    // f = ['v3', اسم, فصل, رقم_الطالب, توقيت, صحيح, إجمالي, دقائق, (أبواب متقنة؟)]
+    const decodedVersion = f[0] || 'v3';
+    const decodedName = f[1] || '';
+    const decodedClass = f[2] || '';
+    const decodedStudentNumber = f[3] || '';
+    const decodedTimestamp = f[4] || '';
+    const correct = parseInt(f[5] || '0', 10) || 0;
+    const total = parseInt(f[6] || '0', 10) || 0;
+    const minutes = parseInt(f[7] || '0', 10) || 0;
+    const mastered = f[8] ? f[8].split(',').filter(Boolean) : [];
+
+    await db.collection('submissions').add({
+      studentName: state.studentName || decodedName,
+      studentClass: state.studentClass || decodedClass,
+      rosterNumber: state.studentNumber || decodedStudentNumber,
+      rawCode: token,
+      decodedVersion, decodedName, decodedClass, decodedStudentNumber, decodedTimestamp,
+      correct, total, minutes, mastered,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    btn.textContent = '✅ تم الإرسال للمعلم';
+    msgEl.textContent = 'وصل رمزك للمعلم بنجاح. ما تحتاج تسويها مرة ثانية.';
+    msgEl.className = 'text-xs mt-2';
+    msgEl.style.color = '#0e8f5f';
+  }catch(e){
+    console.error('send token error', e);
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    msgEl.textContent = 'تعذّر الإرسال (تأكد من الإنترنت). تقدر تنسخ الرمز وتبعثه يدويًا بدلاً من ذلك.';
+    msgEl.className = 'text-xs mt-2';
+    msgEl.style.color = '#e11d48';
+  }
 }
 function retryWrong(){
   const qz = state.quiz;
@@ -1567,7 +1648,11 @@ function renderResult(){
       <h3 class="font-extrabold mb-1">🏅 رمز الإنجاز</h3>
        <p class="text-sm mb-2" style="color:var(--sub)">${esc(state.studentName)} ${state.studentNumber ? '· ' + esc(state.studentNumber) : ''} ${state.studentClass ? '· ' + esc(state.studentClass) : ''} · ${correctN} صحيحة من ${total}</p>
        <div class="selectable p-2 rounded-lg text-xs mb-2" style="background:rgba(100,116,139,.12);font-family:monospace;direction:ltr;text-align:left;white-space:nowrap;overflow-x:auto;max-width:100%">${q.token}</div>
-      <button onclick="copyToken()" class="btn btn-outline text-sm py-1.5 px-4">📋 انسخ الرمز وأرسله للمعلم</button></div>`;
+      <div class="flex gap-2 justify-center flex-wrap">
+        <button id="sendTokenBtn" onclick="sendTokenToTeacher()" class="btn btn-brand text-sm py-2 px-5">📤 إرسال الرمز إلى المعلم</button>
+        <button onclick="copyToken()" class="btn btn-outline text-sm py-2 px-4">📋 نسخ الرمز (احتياطي)</button>
+      </div>
+      <div id="sendTokenMsg" class="text-xs mt-2"></div></div>`;
   app.innerHTML = `<div class="fade-in card p-5 md:p-8 text-center">
     <div class="text-6xl mb-2">${emoji}</div>
     <h2 class="text-2xl font-black mb-1">النتيجة النهائية</h2>
