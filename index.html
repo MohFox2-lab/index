@@ -105,6 +105,7 @@
 <!-- Firebase (لإرسال رمز الإنجاز مباشرة من داخل التطبيق لموقع المعلم) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 
 <script>
 
@@ -182,7 +183,7 @@ function reviewDetail(q, a){
 
 
 // ============================= التقدم والتكرار المتباعد =============================
-const PROG_KEY = 'manhaj_progress_v1', SET_KEY = 'manhaj_settings_v1', ACTIVE_KEY = 'manhaj_active_session_v1';
+const PROG_KEY = 'manhaj_progress_v1', SET_KEY = 'manhaj_settings_v1', ACTIVE_KEY = 'manhaj_active_session_v1', LAST_RESULT_KEY = 'manhaj_last_result_v1';
 const DAY = 86400000, GAPS = [0, 10*60000, DAY, 3*DAY, 7*DAY, 14*DAY]; // الفاصل بعد كل صندوق (1..5)
 const FONT_SIZES = ['14px','16px','18px','21px'], FONT_NAMES = ['صغير','متوسط','كبير','كبير جداً'];
 let PROG = {}, SETT = {fs: 3};
@@ -223,6 +224,40 @@ function saveActiveQuiz(){
   }catch(e){}
 }
 function clearActiveQuiz(){ try{ localStorage.removeItem(ACTIVE_KEY); }catch(e){} }
+
+// آخر نتيجة مكتملة: تُحفظ عند إنهاء أي جلسة، حتى لو الطالب رجع للشاشة الرئيسية
+// بدون إرسال الرمز — تبقى متاحة لين يُنهي جلسة جديدة (تستبدلها) أو يرسل وما يحتاجها
+function saveLastResult(){
+  try{
+    const quiz = Object.assign({}, state.quiz, {timer:null});
+    localStorage.setItem(LAST_RESULT_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      studentName: state.studentName,
+      studentClass: state.studentClass,
+      studentNumber: state.studentNumber,
+      mode: state.mode,
+      quiz
+    }));
+  }catch(e){}
+}
+function getLastResult(){
+  try{
+    const raw = localStorage.getItem(LAST_RESULT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearLastResult(){ try{ localStorage.removeItem(LAST_RESULT_KEY); }catch(e){} }
+function goToLastResult(){
+  const saved = getLastResult();
+  if(!saved){ alert('ما فيه نتيجة محفوظة حاليًا.'); return; }
+  state.studentName = saved.studentName || state.studentName;
+  state.studentClass = saved.studentClass || state.studentClass;
+  state.studentNumber = saved.studentNumber || state.studentNumber;
+  state.mode = saved.mode || state.mode;
+  state.quiz = Object.assign({}, saved.quiz, {timer:null});
+  state.screen = 'result';
+  render();
+}
 function resumeSavedQuiz(){
   const saved = getActiveQuiz();
   if(!saved){ clearActiveQuiz(); render(); return; }
@@ -298,6 +333,10 @@ function topicStats(i){
 function barColor(p){ return p < 40 ? '#e11d48' : (p < 70 ? '#f59e0b' : '#0ea472'); }
 function startFromList(list, limit){
   if(needName()) return;
+  // بوابة موحّدة: لا تُحَل إلا المواضيع التي فعّلها المعلم (تدريب/اختبار حسب الوضع)
+  const allowedList = list.filter(q => isTopicEnabled(q.t, state.mode));
+  if(!allowedList.length && list.length){ alert('هذه المواضيع غير مفعّلة حاليًا من المعلم.'); return; }
+  list = allowedList;
   clearActiveQuiz();
   let pool = smartOrder(list.map(instantiate));
   if(limit) pool = pool.slice(0, limit);
@@ -394,8 +433,24 @@ function toolsCard(){
     : (isStandalone ? '' : isFileProto
         ? `<p class="text-xs mb-3 p-2.5 rounded-xl" style="background:rgba(245,158,11,.12);color:var(--ink)">⚠️ زر «ثبّت التطبيق» يظهر فقط عند فتح التطبيق من رابط إنترنت (مثل الموقع الذي رفعتموه عليه)، ولا يعمل عند فتح ملف HTML مباشرة من الجهاز. افتح رابط الموقع بدل الملف لتتمكن من التثبيت.</p>`
         : `<p class="text-xs mb-3" style="color:var(--sub)">📲 للتثبيت على الجوال: من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» (في آيفون: زر المشاركة ثم «إضافة إلى الشاشة الرئيسية»). إن لم يظهر الخيار، جرّب فتح الرابط من متصفح Chrome أو Safari مباشرة بدل متصفح واتساب أو أي تطبيق آخر.</p>`);
+  const lastResult = getLastResult();
+  const lastResultBtn = (lastResult && lastResult.quiz && lastResult.quiz.token)
+    ? `<button onclick="goToLastResult()" class="btn btn-brand w-full py-2.5 mb-3">🏅 الحصول على رمز الإنجاز (آخر نتيجة)</button>`
+    : '';
   return `<div class="card p-4 md:p-6 mb-4">
     <h2 class="font-extrabold text-lg mb-3">🛠️ أدوات</h2>
+    ${lastResultBtn}
+    ${TASK_CONFIG.title ? `<div class="p-3 rounded-xl mb-3" style="border:1.5px solid var(--line)">
+        <div class="font-extrabold text-sm mb-2">📎 تسليم المهمة: ${esc(TASK_CONFIG.title)}</div>
+        <input id="task-link" type="url" inputmode="url" placeholder="رابط العمل (Google Drive / OneDrive …)" dir="ltr"
+          class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm mb-2" style="border-color:var(--line)">
+        <textarea id="task-note" rows="2" placeholder="ملاحظة للمعلم (اختياري)"
+          class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm mb-2" style="border-color:var(--line)"></textarea>
+        <button id="sendTaskBtn" onclick="sendTaskToTeacher()" class="btn btn-brand w-full py-2.5">📤 إرسال المهمة إلى المعلم</button>
+        <div id="sendTaskMsg" class="text-xs mt-2"></div>
+        <p class="text-xs mt-1" style="color:var(--sub)">ارفع بحثك (PDF أو Word) أو مشروعك على Google Drive واجعل الرابط «لكل من لديه الرابط»، ثم الصقه هنا.</p>
+      </div>` : ''}
+    <a href="${PARENT_PORTAL_URL}" target="_blank" rel="noopener" class="btn btn-outline w-full py-2.5 mb-3 block text-center" style="text-decoration:none">👨‍👩‍👦 إشعار أولياء الأمور (درجات ومتابعة الطالب)</a>
     ${inst}
     <div class="mb-3"><div class="text-xs font-bold mb-1" style="color:var(--sub)">🔠 حجم الخط</div><div class="flex flex-wrap gap-2">${chips}</div></div>
     <label class="flex items-center gap-2 text-sm mb-3 cursor-pointer"><input type="checkbox" ${state.smart?'checked':''} onchange="toggleSmart()"> 🧠 ترتيب ذكي: تظهر الأسئلة المستحقة للمراجعة أولاً (التكرار المتباعد)</label>
@@ -480,10 +535,367 @@ function getTeacherDb(){
   }catch(e){ console.error(e); return null; }
 }
 
-async function sendTokenToTeacher(){
+// ============================= تسليم المهمة (الأداء المهامي) وإشعار الأولياء =============================
+const PARENT_PORTAL_URL = 'https://mohfox2-lab.github.io/teacher6/parents.html';
+const TASK_CACHE_KEY = 'manhaj_task_cfg_v1';
+let TASK_CONFIG = { title: '' };
+function loadCachedTask(){ try{ const r = localStorage.getItem(TASK_CACHE_KEY); if(r) TASK_CONFIG = Object.assign({title:''}, JSON.parse(r)); }catch(e){} }
+
+async function sendTaskToTeacher(){
+  const btn = document.getElementById('sendTaskBtn');
+  const msgEl = document.getElementById('sendTaskMsg');
+  if(!btn || !msgEl) return;
+  const say = (t, ok) => { msgEl.textContent = t; msgEl.style.color = ok ? '#0e8f5f' : '#e11d48'; };
+  if(!(state.studentName||'').trim() || !(state.studentClass||'').trim() || !(state.studentNumber||'').trim()){
+    say('اكتب اسمك وفصلك ورقمك في الكشف (في قسم بيانات الطالب بالأعلى) قبل التسليم.', false); return;
+  }
+  const link = (document.getElementById('task-link').value || '').trim();
+  const note = (document.getElementById('task-note').value || '').trim();
+  if(!link && !note){ say('أضف رابط العمل (Google Drive مثلاً) أو اكتب ملاحظة.', false); return; }
+  if(link && !/^https?:\/\//i.test(link)){ say('الرابط لازم يبدأ بـ https://', false); return; }
+  const db = getTeacherDb();
+  if(!db){ say('تعذّر الاتصال بخدمة الإرسال. تأكد من الإنترنت.', false); return; }
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'جارٍ الإرسال…';
+  try{
+    await db.collection('task_submissions').add({
+      studentName: state.studentName, studentClass: state.studentClass, rosterNumber: String(state.studentNumber),
+      taskTitle: TASK_CONFIG.title, link, note,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    btn.textContent = '✅ تم تسليم المهمة';
+    say('وصلت مهمتك للمعلم بنجاح.', true);
+  }catch(e){
+    console.error('task send', e);
+    btn.disabled = false; btn.textContent = label;
+    say('تعذّر الإرسال، تأكد من الإنترنت وحاول مرة أخرى.', false);
+  }
+}
+
+// ============================= إعدادات المعلم (تتحكم بما يراه الطلاب) =============================
+const ADMIN_EMAIL = 'mohfox2@hotmail.com';
+const CONFIG_CACHE_KEY = 'manhaj_app_config_v2';
+const DEFAULT_CONFIG = {
+  practiceDisabledTopics: [],
+  examDisabledTopics: [],
+  announcement: '',
+  practiceOnlyMode: false,
+  subjectName: '',
+  gradeLabel: '',
+  teacherName: '',
+  termLabel: '',
+  monthlyPlan: { label: '', topics: [] }
+};
+let APP_CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+
+function normalizeConfig(cfg){
+  const c = Object.assign({}, DEFAULT_CONFIG, cfg || {});
+  c.practiceDisabledTopics = c.practiceDisabledTopics || [];
+  c.examDisabledTopics = c.examDisabledTopics || [];
+  c.monthlyPlan = Object.assign({label:'', topics:[]}, c.monthlyPlan || {});
+  return c;
+}
+
+function loadCachedConfig(){
+  try{
+    const raw = localStorage.getItem(CONFIG_CACHE_KEY);
+    if(raw) APP_CONFIG = normalizeConfig(JSON.parse(raw));
+  }catch(e){}
+}
+function cacheConfig(cfg){
+  try{ localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(cfg)); }catch(e){}
+}
+
+// يحمَّل عند الإقلاع: محاولة صامتة بدون حجب الواجهة، ويستخدم آخر نسخة محفوظة
+// محليًا لو ما فيه إنترنت، حتى ما يتعطل التطبيق عن الطالب بسبب انقطاع الشبكة
+function fetchRemoteConfigSilently(){
+  const db = getTeacherDb();
+  if(!db) return;
+  db.collection('app_config').doc('grading').get().then(g => {
+    if(g.exists){
+      const t = ((g.data().currentTask || {}).title || '').trim();
+      TASK_CONFIG = { title: t };
+      try{ localStorage.setItem(TASK_CACHE_KEY, JSON.stringify(TASK_CONFIG)); }catch(e){}
+      if(state.screen === 'setup') render();
+    }
+  }).catch(()=>{});
+  db.collection('app_config').doc('settings').get().then(doc => {
+    if(doc.exists){
+      APP_CONFIG = normalizeConfig(doc.data());
+      cacheConfig(APP_CONFIG);
+      // لو المطلوب الشهري موجود ولسه الطالب ما اختار مواضيع، نفعّله تلقائيًا
+      applyMonthlyPlanDefaultIfFresh();
+      // لو الطالب واقف بشاشة الإعداد وقت وصول الإعدادات، حدّث العرض بهدوء
+      if(state.screen === 'setup') render();
+    }
+  }).catch(()=>{ /* يبقى يشتغل بآخر نسخة محفوظة محليًا، بدون إزعاج الطالب */ });
+}
+
+function isTopicEnabled(i, mode){
+  mode = mode || state.mode;
+  const list = mode === 'exam' ? APP_CONFIG.examDisabledTopics : APP_CONFIG.practiceDisabledTopics;
+  return !(list || []).includes(i);
+}
+
+function enabledTopicIndices(mode){
+  return TOPIC_TITLES.map((_,i)=>i).filter(i => isTopicEnabled(i, mode));
+}
+
+// خطة الشهر: لو موجودة ومحدد فيها مواضيع، ولسه الطالب ما اختار شيء بنفسه
+// (أول مرة يفتح فيها الإعداد)، نحدّدها له تلقائيًا كنقطة بداية
+function applyMonthlyPlanDefaultIfFresh(){
+  const plan = APP_CONFIG.monthlyPlan;
+  if(!plan || !plan.topics || !plan.topics.length) return;
+  if(state.selectedTopics && state.selectedTopics.size > 0) return;
+  const valid = plan.topics.filter(i => isTopicEnabled(i, state.mode));
+  if(valid.length) state.selectedTopics = new Set(valid);
+}
+
+// -------- الدخول --------
+function adminLogin(){
+  const email = document.getElementById('admin-email').value.trim();
+  const pass = document.getElementById('admin-pass').value;
+  const errEl = document.getElementById('admin-login-err');
+  errEl.style.display = 'none';
+  const db = getTeacherDb();
+  if(!db){ errEl.textContent = 'تعذّر الاتصال بالخدمة. تأكد من الإنترنت.'; errEl.style.display='block'; return; }
+  firebase.auth().signInWithEmailAndPassword(email, pass).then(cred => {
+    if(cred.user.email !== ADMIN_EMAIL){
+      firebase.auth().signOut();
+      errEl.textContent = 'هذا الحساب غير مخوّل بالدخول هنا.';
+      errEl.style.display = 'block';
+      return;
+    }
+    render();
+  }).catch(err => {
+    errEl.textContent = 'البريد أو كلمة السر غير صحيحة.';
+    errEl.style.display = 'block';
+  });
+}
+function adminLogout(){ firebase.auth().signOut().then(render); }
+
+function adminToggleTopic(i, mode){
+  const key = mode === 'exam' ? 'examDisabledTopics' : 'practiceDisabledTopics';
+  const set = new Set(APP_CONFIG[key] || []);
+  if(set.has(i)) set.delete(i); else set.add(i);
+  APP_CONFIG[key] = [...set];
+  render();
+}
+
+function adminTogglePracticeOnly(){
+  APP_CONFIG.practiceOnlyMode = !APP_CONFIG.practiceOnlyMode;
+  render();
+}
+
+function adminToggleMonthlyTopic(i){
+  const set = new Set(APP_CONFIG.monthlyPlan.topics || []);
+  if(set.has(i)) set.delete(i); else set.add(i);
+  APP_CONFIG.monthlyPlan.topics = [...set];
+  render();
+}
+
+function adminSaveConfig(){
+  const db = getTeacherDb();
+  const msgEl = document.getElementById('admin-save-msg');
+  const $v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+  APP_CONFIG.announcement = $v('admin-announcement');
+  APP_CONFIG.subjectName = $v('admin-subject');
+  APP_CONFIG.gradeLabel = $v('admin-grade');
+  APP_CONFIG.teacherName = $v('admin-teacher');
+  APP_CONFIG.termLabel = $v('admin-term');
+  APP_CONFIG.monthlyPlan.label = $v('admin-plan-label');
+
+  if(!db){ msgEl.textContent = 'تعذّر الاتصال — تأكد من الإنترنت.'; msgEl.style.color = '#e11d48'; return; }
+  msgEl.textContent = 'جارٍ الحفظ…'; msgEl.style.color = 'var(--sub)';
+  db.collection('app_config').doc('settings').set({
+    practiceDisabledTopics: APP_CONFIG.practiceDisabledTopics || [],
+    examDisabledTopics: APP_CONFIG.examDisabledTopics || [],
+    announcement: APP_CONFIG.announcement || '',
+    practiceOnlyMode: !!APP_CONFIG.practiceOnlyMode,
+    subjectName: APP_CONFIG.subjectName || '',
+    gradeLabel: APP_CONFIG.gradeLabel || '',
+    teacherName: APP_CONFIG.teacherName || '',
+    termLabel: APP_CONFIG.termLabel || '',
+    monthlyPlan: APP_CONFIG.monthlyPlan || {label:'',topics:[]},
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => {
+    cacheConfig(APP_CONFIG);
+    msgEl.textContent = '✅ تم الحفظ. كل الطلاب بيشوفون التحديث عند فتح التطبيق.';
+    msgEl.style.color = '#0e8f5f';
+  }).catch(err => {
+    console.error(err);
+    msgEl.textContent = 'تعذّر الحفظ. حاول مرة أخرى.';
+    msgEl.style.color = '#e11d48';
+  });
+}
+
+function renderAdmin(){
+  const db = getTeacherDb();
+  const user = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
+  const isAdmin = user && user.email === ADMIN_EMAIL;
+
+  if(!isAdmin){
+    app.innerHTML = `
+    <div class="fade-in max-w-md mx-auto">
+      <div class="card p-6 mt-10 text-center">
+        <div class="text-4xl mb-2">🔒</div>
+        <h2 class="font-extrabold text-lg mb-4">دخول المعلم</h2>
+        <div class="grid gap-2 text-right">
+          <input id="admin-email" type="email" placeholder="البريد الإلكتروني"
+            class="w-full border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)">
+          <input id="admin-pass" type="password" placeholder="كلمة السر"
+            class="w-full border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)">
+        </div>
+        <div id="admin-login-err" class="text-xs mt-2" style="color:#e11d48;display:none"></div>
+        <button onclick="adminLogin()" class="btn btn-brand w-full mt-4 py-2.5">دخول</button>
+        <button onclick="state.screen='setup'; render();" class="btn btn-outline w-full mt-2 py-2">رجوع</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const topicRows = TOPIC_TITLES.map((t,i) => `
+    <div class="flex items-center gap-3 py-1.5 px-2 rounded-lg" style="border-bottom:1px solid var(--line)">
+      <span class="text-sm flex-1">${esc(t)}</span>
+      <label class="flex items-center gap-1 text-xs" style="cursor:pointer" onclick="event.preventDefault(); adminToggleTopic(${i}, 'practice')">
+        <input type="checkbox" ${isTopicEnabled(i,'practice')?'checked':''} style="pointer-events:none"> 🧠 تدريب (الواجبات)
+      </label>
+      <label class="flex items-center gap-1 text-xs" style="cursor:pointer" onclick="event.preventDefault(); adminToggleTopic(${i}, 'exam')">
+        <input type="checkbox" ${isTopicEnabled(i,'exam')?'checked':''} style="pointer-events:none"> 📝 اختبار
+      </label>
+    </div>`).join('');
+
+  const planRows = TOPIC_TITLES.map((t,i) => {
+    const checked = (APP_CONFIG.monthlyPlan.topics||[]).includes(i);
+    return `<label class="flex items-center gap-2 py-1.5 px-2 rounded-lg" style="cursor:pointer" onclick="event.preventDefault(); adminToggleMonthlyTopic(${i})">
+      <input type="checkbox" ${checked?'checked':''} style="pointer-events:none">
+      <span class="text-sm">${esc(t)}</span>
+    </label>`;
+  }).join('');
+
+  app.innerHTML = `
+  <div class="fade-in max-w-2xl mx-auto">
+    <div class="flex items-center justify-between mb-4 mt-2">
+      <h1 class="font-extrabold text-xl">⚙️ إعدادات المعلم</h1>
+      <div class="flex gap-2">
+        <button onclick="state.screen='setup'; render();" class="btn btn-outline text-sm py-2 px-3">رجوع للتطبيق</button>
+        <button onclick="adminLogout()" class="btn btn-outline text-sm py-2 px-3">🔒 خروج</button>
+      </div>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-1">🔒 التحكم في التطبيق</h2>
+      <label class="flex items-center gap-2 mt-2" style="cursor:pointer" onclick="event.preventDefault(); adminTogglePracticeOnly()">
+        <input type="checkbox" ${APP_CONFIG.practiceOnlyMode?'checked':''} style="pointer-events:none">
+        <span class="text-sm">وضع "تدريب فقط" — يخفي وضع الاختبار بالوقت عن كل الطلاب مؤقتًا</span>
+      </label>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-1">📚 المواضيع المتاحة للطلاب</h2>
+      <p class="text-xs mb-3" style="color:var(--sub)">تقدر تتحكم بالتدريب والاختبار لكل موضوع بشكل منفصل — مثلاً تسمح بالتدريب على موضوع وتمنعه من الاختبار لين ما يخلص الوحدة.</p>
+      <div>${topicRows}</div>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-2">📅 خطة الشهر (اختياري)</h2>
+      <p class="text-xs mb-2" style="color:var(--sub)">حدد مواضيع "المطلوب الآن" — تظهر للطالب كشريط وتكون محددة له تلقائيًا أول ما يفتح (يقدر يغيّرها بنفسه لو حاب).</p>
+      <input id="admin-plan-label" type="text" placeholder="مثال: الشهر الأول"
+        value="${esc(APP_CONFIG.monthlyPlan.label||'')}"
+        class="w-full mb-2 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-1">${planRows}</div>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-2">⚙️ إعدادات عامة (اختياري)</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-bold" style="color:var(--sub)">اسم المادة</label>
+          <input id="admin-subject" type="text" placeholder="مدرّب منهج العلوم" value="${esc(APP_CONFIG.subjectName||'')}"
+            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-bold" style="color:var(--sub)">الصف والفصل الدراسي</label>
+          <input id="admin-grade" type="text" placeholder="الصف الثاني المتوسط" value="${esc(APP_CONFIG.gradeLabel||'')}"
+            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-bold" style="color:var(--sub)">اسم المعلم</label>
+          <input id="admin-teacher" type="text" placeholder="الأستاذ محمد علي الجنبي" value="${esc(APP_CONFIG.teacherName||'')}"
+            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-bold" style="color:var(--sub)">السنة/الفصل الدراسي</label>
+          <input id="admin-term" type="text" placeholder="الفصل الدراسي الأول 1448هـ" value="${esc(APP_CONFIG.termLabel||'')}"
+            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+        </div>
+      </div>
+      <p class="text-xs mt-2" style="color:var(--sub)">اتركها فارغة للإبقاء على القيم الافتراضية الحالية.</p>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-2">📢 رسالة للطلاب (اختياري)</h2>
+      <textarea id="admin-announcement" rows="2" placeholder="مثال: اختبار الفصل الأول الأحد القادم — ركزوا على وحدة الدم والدورة الدموية"
+        class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">${esc(APP_CONFIG.announcement||'')}</textarea>
+      <p class="text-xs mt-1" style="color:var(--sub)">تظهر هذي الرسالة أعلى شاشة الطالب الرئيسية. اتركها فارغة لإخفائها.</p>
+    </div>
+
+    <button onclick="adminSaveConfig()" class="btn btn-brand w-full py-3 font-extrabold">💾 حفظ الإعدادات للجميع</button>
+    <div id="admin-save-msg" class="text-xs mt-2 text-center"></div>
+  </div>`;
+}
+
+// حالة الجلسة قبل الإرسال: كم سؤال لم يُحل، وكم إجابة خاطئة
+function quizSendStatus(){
+  const qz = state.quiz;
+  const total = qz.questions.length;
+  let unanswered = 0, wrong = 0, correct = 0;
+  qz.questions.forEach((qq,i) => {
+    const a = qz.answers[i];
+    if(!a) unanswered++;
+    else if(a.correct) correct++;
+    else wrong++;
+  });
+  return {total, unanswered, wrong, correct};
+}
+function closeSendWarning(){ const d = document.getElementById('send-warning'); if(d) d.remove(); }
+function showSendWarning(st){
+  closeSendWarning();
+  const parts = [];
+  if(st.unanswered) parts.push('🔸 ' + st.unanswered + ' سؤال لم يُحل');
+  if(st.wrong) parts.push('❌ ' + st.wrong + ' إجابة خاطئة تحتاج تصحيح');
+  const div = document.createElement('div');
+  div.id = 'send-warning';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  div.innerHTML = `<div class="card p-5" style="max-width:420px;width:100%;background:var(--card,#fff)">
+    <h3 class="font-extrabold text-lg mb-2">⚠️ قبل إرسال الرمز للمعلم</h3>
+    <p class="text-sm mb-1">نتيجتك الحالية: <b>${st.correct}</b> صحيحة من <b>${st.total}</b></p>
+    <p class="text-sm mb-3" style="color:#b45309">${parts.join('<br>')}</p>
+    <div class="grid gap-2">
+      ${st.unanswered ? '<button onclick="resumeUnanswered()" class="btn btn-brand py-2.5">▶️ إكمال حل الأسئلة المتبقية</button>' : ''}
+      ${st.wrong ? '<button onclick="closeSendWarning();retryWrong()" class="btn btn-brand py-2.5">🎯 تصحيح الأخطاء أولاً</button>' : ''}
+      <button onclick="closeSendWarning();sendTokenToTeacher(true)" class="btn btn-outline py-2.5">📤 إرسال الرمز كما هو</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+function resumeUnanswered(){
+  closeSendWarning();
+  const qz = state.quiz;
+  const list = qz.questions.filter((qq,i) => !qz.answers[i]).map(qq => BYID[qq.id]).filter(Boolean);
+  if(!list.length){ alert('ما فيه أسئلة متبقية.'); return; }
+  startFromList(list, 0);
+}
+
+async function sendTokenToTeacher(force){
   const btn = document.getElementById('sendTokenBtn');
   const msgEl = document.getElementById('sendTokenMsg');
   if(!btn || !msgEl) return;
+
+  if(force !== true){
+    const st = quizSendStatus();
+    if(st.unanswered > 0 || st.wrong > 0){ showSendWarning(st); return; }
+  }
 
   const db = getTeacherDb();
   if(!db){
@@ -513,7 +925,10 @@ async function sendTokenToTeacher(){
     const minutes = parseInt(f[7] || '0', 10) || 0;
     const mastered = f[8] ? f[8].split(',').filter(Boolean) : [];
 
+    let attempted = [];
+    try{ attempted = TOPIC_TITLES.map((_,i)=>i).filter(i => topicStats(i).seen > 0); }catch(e){}
     await db.collection('submissions').add({
+      attempted,
       studentName: state.studentName || decodedName,
       studentClass: state.studentClass || decodedClass,
       rosterNumber: state.studentNumber || decodedStudentNumber,
@@ -1138,6 +1553,7 @@ function render(){
   else if(state.screen === 'book') renderBook();
   else if(state.screen === 'teacher') renderTeacher();
   else if(state.screen === 'lab') renderLab();
+  else if(state.screen === 'admin') renderAdmin();
 }
 
 function toggleTopic(i){
@@ -1146,8 +1562,8 @@ function toggleTopic(i){
   render();
 }
 function toggleAllTopics(){
-  if(state.selectedTopics.size === TOPIC_TITLES.length) state.selectedTopics.clear();
-  else state.selectedTopics = new Set(TOPIC_TITLES.map((_,i)=>i));
+  if(state.selectedTopics.size === enabledTopicIndices().length) state.selectedTopics.clear();
+  else state.selectedTopics = new Set(enabledTopicIndices());
   render();
 }
 function toggleAllTypes(){
@@ -1165,6 +1581,10 @@ function toggleType(k){
 function estimatePoolSize(){ return countPool([...state.selectedTopics], state.selectedTypes); }
 
 function renderSetup(){
+  // لو المعلم فعّل "تدريب فقط" وكان وضع الطالب على اختبار، نرجعه لتدريب تلقائيًا
+  if(APP_CONFIG.practiceOnlyMode && state.mode === 'exam') state.mode = 'practice';
+  // لو المعلم عطّل موضوعًا كان الطالب محدده مسبقًا، نشيله من اختياره تلقائيًا
+  [...state.selectedTopics].forEach(i => { if(!isTopicEnabled(i)) state.selectedTopics.delete(i); });
   const saved = getActiveQuiz();
   const resumeCard = saved
     ? `<div class="card p-4 md:p-5 mb-4" style="border:2px solid var(--accent);background:rgba(37,99,235,.07)">
@@ -1176,9 +1596,23 @@ function renderSetup(){
         </div></div>`
     : '';
   const topicCounts = TOPIC_TITLES.map((_,i)=> BANK.filter(q=>q.t===i && (state.selectedTypes.size===0 || state.selectedTypes.has(q.k))).length);
-  const topicChips = TOPIC_TITLES.map((t,i)=>`
-    <button onclick="toggleTopic(${i})" class="chip ${state.selectedTopics.has(i)?'active':''}">${t} <span style="opacity:.7;font-weight:500">(${topicCounts[i]})</span></button>
-  `).join('');
+  const topicChips = TOPIC_TITLES.map((t,i)=>
+    isTopicEnabled(i) ? `<button onclick="toggleTopic(${i})" class="chip ${state.selectedTopics.has(i)?'active':''}">${t} <span style="opacity:.7;font-weight:500">(${topicCounts[i]})</span></button>` : ''
+  ).join('');
+  const announcementBanner = (APP_CONFIG.announcement || '').trim()
+    ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid #f0b429;background:rgba(240,180,41,.08)">
+        <div class="flex items-start gap-2"><span class="text-xl">📢</span>
+        <p class="text-sm font-bold" style="color:#8a5a00">${esc(APP_CONFIG.announcement)}</p></div>
+      </div>`
+    : '';
+
+  const planTopics = (APP_CONFIG.monthlyPlan && APP_CONFIG.monthlyPlan.topics) || [];
+  const planBanner = planTopics.length
+    ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(15,110,107,.06)">
+        <p class="text-sm font-extrabold mb-1" style="color:var(--brand-dark)">📅 المطلوب منك الآن${APP_CONFIG.monthlyPlan.label ? ' — ' + esc(APP_CONFIG.monthlyPlan.label) : ''}</p>
+        <div class="flex flex-wrap gap-1">${planTopics.map(i => TOPIC_TITLES[i] ? `<span class="chip active" style="pointer-events:none;font-size:.75rem;padding:3px 10px">${esc(TOPIC_TITLES[i])}</span>` : '').join('')}</div>
+      </div>`
+    : '';
   const typeCards = Object.keys(TYPE_META).map(k=>{
     const m = TYPE_META[k];
     const n = BANK.filter(q=>q.k===k && (state.selectedTopics.size===0 || state.selectedTopics.has(q.t))).length;
@@ -1199,12 +1633,14 @@ function renderSetup(){
   <div class="fade-in">
     <header class="text-center mb-5 mt-2">
       <div class="text-4xl mb-1">🔬🧪🩺</div>
-      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">مدرّب منهج العلوم <span style="font-size:.45em;font-weight:700;color:var(--sub)">v8.1</span></h1>
-      <p class="text-sm md:text-base mt-1" style="color:var(--sub)">الصف الثاني المتوسط — الفصل الدراسي الأول 1448هـ · دربّني قبل الاختبار!</p>
-      <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">${TEACHER_NAME}</p>
+      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v8.8</span></h1>
+      <p class="text-sm md:text-base mt-1" style="color:var(--sub)">${esc(APP_CONFIG.gradeLabel || 'الصف الثاني المتوسط')} — ${esc(APP_CONFIG.termLabel || 'الفصل الدراسي الأول 1448هـ')} · دربّني قبل الاختبار!</p>
+      <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">${esc(APP_CONFIG.teacherName || TEACHER_NAME)}</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">المدير: ${DIRECTOR_NAME}</p>
     </header>
 
+     ${announcementBanner}
+     ${planBanner}
      ${progressCards()}
      ${labCard()}
      ${resumeCard}
@@ -1234,9 +1670,9 @@ function renderSetup(){
 
     <div class="card p-4 md:p-6 mb-4">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-extrabold text-lg">📚 اختر المواضيع <span class="text-xs font-bold" style="color:var(--sub)">(${state.selectedTopics.size} من ${TOPIC_TITLES.length})</span></h2>
+        <h2 class="font-extrabold text-lg">📚 اختر المواضيع <span class="text-xs font-bold" style="color:var(--sub)">(${state.selectedTopics.size} من ${enabledTopicIndices().length})</span></h2>
         <button onclick="toggleAllTopics()" class="btn btn-outline text-xs py-1.5 px-3">
-          ${state.selectedTopics.size===TOPIC_TITLES.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+          ${state.selectedTopics.size===enabledTopicIndices().length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
         </button>
       </div>
       <div class="flex flex-wrap gap-2">${topicChips}</div>
@@ -1258,8 +1694,10 @@ function renderSetup(){
         <div>
           <label class="text-xs font-bold" style="color:var(--sub)">الوضع</label>
           <div class="flex gap-2 mt-1">
-            <button onclick="state.mode='practice';render()" class="btn ${state.mode==='practice'?'btn-brand':'btn-outline'} flex-1 text-sm py-2">🧠 تدريب</button>
-            <button onclick="state.mode='exam';render()" class="btn ${state.mode==='exam'?'btn-brand':'btn-outline'} flex-1 text-sm py-2">📝 اختبار</button>
+            <button onclick="state.mode='practice';render()" class="btn ${state.mode==='practice'?'btn-brand':'btn-outline'} flex-1 text-sm py-2">🧠 تدريب (الواجبات)</button>
+            ${APP_CONFIG.practiceOnlyMode
+              ? `<button disabled title="عطّل المعلم وضع الاختبار مؤقتًا" class="btn btn-outline flex-1 text-sm py-2" style="opacity:.45;cursor:not-allowed">🔒 الاختبار معطّل مؤقتًا</button>`
+              : `<button onclick="state.mode='exam';render()" class="btn ${state.mode==='exam'?'btn-brand':'btn-outline'} flex-1 text-sm py-2">📝 اختبار</button>`}
           </div>
         </div>
         <div>
@@ -1602,6 +2040,8 @@ function finishQuiz(){
   clearInterval(state.quiz.timer);
   saveSession();
   clearActiveQuiz();
+  if(!state.quiz.token) state.quiz.token = makeToken();
+  saveLastResult();
   state.screen = 'result';
   render();
 }
@@ -1683,7 +2123,7 @@ function backToSetup(){
 
 // ============================= بطاقات المراجعة السريعة =============================
 function startFlash(){
-  let cards = BANK.filter(q => q.k==='recall' && state.selectedTopics.has(q.t))
+  let cards = BANK.filter(q => q.k==='recall' && state.selectedTopics.has(q.t) && isTopicEnabled(q.t,'practice'))
     .map(q => ({q: q.prompt, a: q.answer, topic: TOPIC_TITLES[q.t]}));
   cards = shuffleArr(cards);
   if(cards.length===0){ alert('اختر موضوعاً واحداً على الأقل'); return; }
@@ -1727,8 +2167,16 @@ function flashPrev(){
 
 // ============================= الإقلاع =============================
 loadAll(); applyFont();
+loadCachedConfig();
+loadCachedTask();
+applyMonthlyPlanDefaultIfFresh();
+fetchRemoteConfigSilently();
+if(window.firebase && firebase.auth){
+  firebase.auth().onAuthStateChanged(() => { if(state.screen === 'admin') render(); });
+}
 state.studentName = SETT.name || ''; state.studentClass = SETT.cls || ''; state.studentNumber = SETT.studentNumber || '';
 if(location.hash === '#teacher') state.screen = 'teacher';
+if(location.hash === '#admin') state.screen = 'admin';
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
 
