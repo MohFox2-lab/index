@@ -1,5 +1,5 @@
 // خدمة العمل دون إنترنت: تخزّن الملفات عند أول زيارة، وتحدّثها في الخلفية عند كل زيارة.
-const V = 'manhaj-v26';
+const V = 'manhaj-v27';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const EXT = ['cdn.tailwindcss.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com'];
 self.addEventListener('install', e => {

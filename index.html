@@ -731,8 +731,7 @@ function isTopicEnabled(i, mode){
   mode = mode || state.mode;
   const list = mode === 'exam' ? APP_CONFIG.examDisabledTopics : APP_CONFIG.practiceDisabledTopics;
   if ((list || []).includes(i)) return false;
-  const plan = APP_CONFIG.monthlyPlan || {};
-  if (plan.locked && Array.isArray(plan.topics) && plan.topics.length) return plan.topics.map(Number).includes(Number(i));
+  // قائمة المطلوب الآن مستقلة عن إتاحة التدريب والاختبار.
   return true;
 }
 
@@ -812,7 +811,7 @@ function adminSaveConfig(){
   APP_CONFIG.teacherName = $v('admin-teacher');
   APP_CONFIG.termLabel = $v('admin-term');
   APP_CONFIG.monthlyPlan.label = $v('admin-plan-label');
-  APP_CONFIG.monthlyPlan.locked = !!document.getElementById('admin-plan-lock')?.checked;
+  APP_CONFIG.monthlyPlan.locked = false; // للتوافق مع الإعدادات القديمة فقط
 
   if(!db){ msgEl.textContent = 'تعذّر الاتصال — تأكد من الإنترنت.'; msgEl.style.color = '#e11d48'; return; }
   msgEl.textContent = 'جارٍ الحفظ…'; msgEl.style.color = 'var(--sub)';
@@ -894,7 +893,7 @@ function renderAdmin(){
       </div>
     </div>
 
-    ${activePlan.locked && planTopics.length ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(14,164,114,.06)"><div class="font-extrabold text-sm">📅 ${esc(activePlan.label || 'الخطة الحالية')}</div><div class="text-xs mt-1" style="color:var(--sub)">المواضيع المطلوبة عليك الآن: ${planTopics.map(i=>esc(TOPIC_TITLES[i])).join(' · ')}<br>🔒 لا يمكن بدء تدريب أو اختبار خارج هذه الخطة.</div></div>` : ''}
+    ${APP_CONFIG.monthlyPlan.topics.length ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(14,164,114,.06)"><div class="font-extrabold text-sm">📅 ${esc(APP_CONFIG.monthlyPlan.label || 'الخطة الحالية')}</div><div class="text-xs mt-1" style="color:var(--sub)">المواضيع المطلوبة عليك الآن: ${APP_CONFIG.monthlyPlan.topics.map(i=>esc(TOPIC_TITLES[i])).join(' · ')}</div></div>` : ''}
     <div class="card p-4 md:p-6 mb-4">
       <h2 class="font-extrabold mb-1">🔒 التحكم في التطبيق</h2>
       <label class="flex items-center gap-2 mt-2" style="cursor:pointer" onclick="event.preventDefault(); adminTogglePracticeOnly()">
@@ -934,7 +933,6 @@ function renderAdmin(){
       <input id="admin-plan-label" type="text" placeholder="مثال: الشهر الأول"
         value="${esc(APP_CONFIG.monthlyPlan.label||'')}"
         class="w-full mb-2 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
-      <label class="flex items-center gap-2 text-sm mb-2" style="cursor:pointer"><input id="admin-plan-lock" type="checkbox" ${APP_CONFIG.monthlyPlan.locked !== false ? 'checked':''}> 🔒 إلزام الطالب بهذه الخطة (يُمنع من حل المواضيع خارجها)</label>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-1">${planRows}</div>
     </div>
 
@@ -1763,7 +1761,7 @@ function renderSetup(){
     ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(15,110,107,.06)">
         <p class="text-sm font-extrabold mb-1" style="color:var(--brand-dark)">📅 المطلوب منك الآن${APP_CONFIG.monthlyPlan.label ? ' — ' + esc(APP_CONFIG.monthlyPlan.label) : ''}</p>
         <div class="flex flex-wrap gap-1">${planTopics.map(i => TOPIC_TITLES[i] ? `<span class="chip active" style="pointer-events:none;font-size:.75rem;padding:3px 10px">${esc(TOPIC_TITLES[i])}</span>` : '').join('')}</div>
-        ${APP_CONFIG.monthlyPlan.locked ? '<div class="text-xs mt-2 font-bold" style="color:var(--brand-dark)">🔒 هذه هي المواضيع المطلوبة حاليًا ولا يمكن حل موضوع خارجها.</div>' : ''}
+        <div class="text-xs mt-2 font-bold" style="color:var(--brand-dark)">هذه هي المواضيع المطلوبة حاليًا.</div>
       </div>`
     : '';
   const typeCards = Object.keys(TYPE_META).map(k=>{
@@ -1891,7 +1889,6 @@ function renderSetup(){
 function startQuiz(){
   if(needName()) return;
   state.selectedTopics = new Set([...state.selectedTopics].filter(i => isTopicEnabled(i, state.mode)));
-  if(APP_CONFIG.monthlyPlan && APP_CONFIG.monthlyPlan.locked && APP_CONFIG.monthlyPlan.topics && APP_CONFIG.monthlyPlan.topics.length && !state.selectedTopics.size){ alert('لا توجد مواضيع متاحة لك حاليًا حسب خطة المعلم.'); return; }
   if(state.selectedTopics.size===0 || state.selectedTypes.size===0){ alert('اختر موضوعاً ونوع أسئلة واحداً على الأقل.'); return; }
   let pool = buildQuestionPool([...state.selectedTopics], state.selectedTypes);
   pool = state.smart ? smartOrder(pool) : shuffleArr(pool);
