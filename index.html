@@ -571,6 +571,87 @@ async function sendTaskToTeacher(){
   }
 }
 
+// ============================= الفصول: رقم أو حرف فقط =============================
+const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+const AR_NUMBER_WORDS = {
+  "صفر": "0",
+  "واحد": "1", "أول": "1", "الأول": "1",
+  "اثنان": "2", "اثنين": "2", "ثاني": "2", "الثاني": "2",
+  "ثلاثة": "3", "ثلاث": "3", "ثالث": "3", "الثالث": "3",
+  "أربعة": "4", "اربعة": "4", "أربع": "4", "اربع": "4", "رابع": "4", "الرابع": "4",
+  "خمسة": "5", "خمس": "5", "خامس": "5", "الخامس": "5",
+  "ستة": "6", "ست": "6", "سادس": "6", "السادس": "6",
+  "سبعة": "7", "سبع": "7", "سابع": "7", "السابع": "7",
+  "ثمانية": "8", "ثماني": "8", "تمانية": "8", "ثامن": "8", "الثامن": "8",
+  "تسعة": "9", "تسع": "9", "تاسع": "9", "التاسع": "9",
+  "عشرة": "10", "عشر": "10", "عاشر": "10", "العاشر": "10"
+};
+
+function arabicIndicToWestern(s) {
+  return s.replace(/[٠-٩]/g, d => String(AR_DIGITS.indexOf(d)));
+}
+
+// صيغة "ه" العامية بدل "ة" شائعة جدًا (سته، ثلاثه، خمسه...) — نضيفها تلقائيًا
+Object.keys(AR_NUMBER_WORDS).forEach(w => {
+  if (w.endsWith("ة")) AR_NUMBER_WORDS[w.slice(0, -1) + "ه"] = AR_NUMBER_WORDS[w];
+});
+
+const AR_LETTER_NAMES = { "الف": "أ", "ألف": "أ", "باء": "ب", "جيم": "ج", "دال": "د", "هاء": "ه", "واو": "و", "زاي": "ز", "حاء": "ح" };
+
+function normalizeClassToken(tok) {
+  let t = tok.trim().replace(/[\u0640\u064B-\u0652]/g, "");   // حذف التطويل (هـ) والتشكيل
+  if (!t) return "";
+  if (AR_NUMBER_WORDS[t]) return AR_NUMBER_WORDS[t];
+  if (AR_LETTER_NAMES[t]) return AR_LETTER_NAMES[t];
+  // حرف شعبة واحد: وحّد أشكال الألف (أ/إ/آ/ا) إلى "أ"
+  return t.replace(/^[أإآا]$/u, "أ");
+}
+
+// هذا التطبيق خاص بصف واحد ثابت (الثاني متوسط) — فكل الطلاب "صفهم" نفس الرقم،
+// والرقم/الحرف المختلف هو رقم الشعبة الحقيقي. هذا يحل مشكلة الترتيب المعكوس:
+// إذا كتب الطالب "2/6" أو "6/2" نعرف مسبقًا أن "2" هو الصف الثابت، فنعيد ترتيبها
+// دائمًا بنفس الشكل القياسي "2/6" بغض النظر عن ترتيب الكتابة.
+const FIXED_GRADE = "2";
+
+function canonicalizeClass(raw) {
+  if (!raw) return "";
+  let s = arabicIndicToWestern(String(raw).trim());
+  if (!s) return "";
+  // كل الفواصل المحتملة (- أو فاصلة أو مسافات) تتحول لـ "/" واحد موحّد
+  s = s.replace(/[\u060C\-]+/g, "/");
+  s = s.replace(/\s*\/\s*/g, "/");
+  s = s.replace(/\s+/g, "/");
+  s = s.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  const parts = s.split("/").map(normalizeClassToken).filter(Boolean);
+
+  // التطبيق لصف واحد ثابت، فالمهم رقم/حرف الشعبة فقط: 6 أو أ
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) {
+    const [a, b] = parts;
+    if (a === b) return a;                                   // 3/3 -> 3
+    if (a === FIXED_GRADE && b !== FIXED_GRADE) return b;    // 2/6 -> 6  ، 2/أ -> أ
+    if (b === FIXED_GRADE && a !== FIXED_GRADE) return a;    // 6/2 -> 6  ، أ/2 -> أ
+    return parts.join("/");                                  // غير واضح — لا نخمّن
+  }
+  return parts.join("/");
+}
+
+// الاسم المعروض لشعبة (هـ بدل ه)
+function classLabel(v) { return v === "ه" ? "هـ" : v; }
+
+
+const CLASS_LETTERS = ['أ','ب','ج','د','ه','و','ز','ح','ط','ي','ك','ل'];
+function buildClassList(type, count){
+  count = Math.max(1, Math.min(type === 'let' ? CLASS_LETTERS.length : 30, parseInt(count,10) || 1));
+  return type === 'let' ? CLASS_LETTERS.slice(0, count) : Array.from({length:count}, (_,i)=>String(i+1));
+}
+function classOptions(){
+  const list = (APP_CONFIG.classes && APP_CONFIG.classes.length) ? APP_CONFIG.classes.slice() : buildClassList('num', 10);
+  const cur = state.studentClass;
+  if(cur && !list.includes(cur)) list.push(cur);   // لا نمسح فصلًا محفوظًا حتى لو غير موجود بالقائمة
+  return list;
+}
+
 // ============================= إعدادات المعلم (تتحكم بما يراه الطلاب) =============================
 const ADMIN_EMAIL = 'mohfox2@hotmail.com';
 const CONFIG_CACHE_KEY = 'manhaj_app_config_v2';
@@ -583,7 +664,8 @@ const DEFAULT_CONFIG = {
   gradeLabel: '',
   teacherName: '',
   termLabel: '',
-  monthlyPlan: { label: '', topics: [] }
+  monthlyPlan: { label: '', topics: [] },
+  classes: []
 };
 let APP_CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
@@ -592,6 +674,7 @@ function normalizeConfig(cfg){
   c.practiceDisabledTopics = c.practiceDisabledTopics || [];
   c.examDisabledTopics = c.examDisabledTopics || [];
   c.monthlyPlan = Object.assign({label:'', topics:[]}, c.monthlyPlan || {});
+  c.classes = Array.isArray(c.classes) ? c.classes.map(String) : [];
   return c;
 }
 
@@ -681,6 +764,14 @@ function adminToggleTopic(i, mode){
   render();
 }
 
+function adminSetClasses(){
+  const t = (document.getElementById('admin-cls-type')||{}).value || 'num';
+  const n = (document.getElementById('admin-cls-count')||{}).value;
+  APP_CONFIG.classes = buildClassList(t, n);
+  const prev = document.getElementById('admin-cls-preview');
+  if(prev) prev.textContent = 'الخيارات التي سيراها الطالب: ' + APP_CONFIG.classes.map(classLabel).join('، ');
+}
+
 function adminTogglePracticeOnly(){
   APP_CONFIG.practiceOnlyMode = !APP_CONFIG.practiceOnlyMode;
   render();
@@ -717,6 +808,7 @@ function adminSaveConfig(){
     teacherName: APP_CONFIG.teacherName || '',
     termLabel: APP_CONFIG.termLabel || '',
     monthlyPlan: APP_CONFIG.monthlyPlan || {label:'',topics:[]},
+    classes: APP_CONFIG.classes || [],
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }).then(() => {
     cacheConfig(APP_CONFIG);
@@ -795,6 +887,25 @@ function renderAdmin(){
       <h2 class="font-extrabold mb-1">📚 المواضيع المتاحة للطلاب</h2>
       <p class="text-xs mb-3" style="color:var(--sub)">تقدر تتحكم بالتدريب والاختبار لكل موضوع بشكل منفصل — مثلاً تسمح بالتدريب على موضوع وتمنعه من الاختبار لين ما يخلص الوحدة.</p>
       <div>${topicRows}</div>
+    </div>
+
+    <div class="card p-4 md:p-6 mb-4">
+      <h2 class="font-extrabold mb-1">🏫 فصول الصف</h2>
+      <p class="text-xs mb-2" style="color:var(--sub)">حدد شكل الفصول في مدرستك. الطالب يختار فصله من قائمة (رقم أو حرف) بدل أن يكتبه.</p>
+      ${(() => {
+        const cl = (APP_CONFIG.classes && APP_CONFIG.classes.length) ? APP_CONFIG.classes : buildClassList('num', 10);
+        const isLet = /^[^\d]/.test(cl[0] || '1');
+        return `<div class="flex gap-2 flex-wrap items-center">
+          <select id="admin-cls-type" onchange="adminSetClasses()" class="border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+            <option value="num" ${isLet?'':'selected'}>أرقام (1، 2، 3 …)</option>
+            <option value="let" ${isLet?'selected':''}>حروف (أ، ب، ج …)</option>
+          </select>
+          <label class="text-sm">عدد الفصول</label>
+          <input id="admin-cls-count" type="number" min="1" max="30" value="${cl.length}" onchange="adminSetClasses()" oninput="adminSetClasses()"
+            class="border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line);width:90px">
+        </div>
+        <p id="admin-cls-preview" class="text-xs mt-2" style="color:var(--sub)">الخيارات التي سيراها الطالب: ${cl.map(classLabel).join('، ')}</p>`;
+      })()}
     </div>
 
     <div class="card p-4 md:p-6 mb-4">
@@ -1639,7 +1750,7 @@ function renderSetup(){
   <div class="fade-in">
     <header class="text-center mb-5 mt-2">
       <div class="text-4xl mb-1">🔬🧪🩺</div>
-      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v8.9</span></h1>
+      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v9.0</span></h1>
       <p class="text-sm md:text-base mt-1" style="color:var(--sub)">${esc(APP_CONFIG.gradeLabel || 'الصف الثاني المتوسط')} — ${esc(APP_CONFIG.termLabel || 'الفصل الدراسي الأول 1448هـ')} · دربّني قبل الاختبار!</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">${esc(APP_CONFIG.teacherName || TEACHER_NAME)}</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">المدير: ${DIRECTOR_NAME}</p>
@@ -1660,10 +1771,12 @@ function renderSetup(){
             placeholder="مثال: سلطان محمد">
         </div>
         <div>
-          <label class="text-xs font-bold" style="color:var(--sub)">الفصل / الشعبة</label>
-          <input id="inp-class" value="${esc(state.studentClass)}" oninput="state.studentClass=this.value"
-            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)"
-            placeholder="مثال: 2/3">
+          <label class="text-xs font-bold" style="color:var(--sub)">الفصل</label>
+          <select id="inp-class" onchange="state.studentClass=this.value"
+            class="w-full mt-1 border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)">
+            <option value="">اختر فصلك…</option>
+            ${classOptions().map(v => `<option value="${esc(v)}" ${state.studentClass===v?'selected':''}>${esc(classLabel(v))}</option>`).join('')}
+          </select>
         </div>
         <div>
           <label class="text-xs font-bold" style="color:var(--sub)">رقم الطالب</label>
@@ -2180,7 +2293,7 @@ fetchRemoteConfigSilently();
 if(window.firebase && firebase.auth){
   firebase.auth().onAuthStateChanged(() => { if(state.screen === 'admin') render(); });
 }
-state.studentName = SETT.name || ''; state.studentClass = SETT.cls || ''; state.studentNumber = SETT.studentNumber || '';
+state.studentName = SETT.name || ''; state.studentClass = canonicalizeClass(SETT.cls || ''); state.studentNumber = SETT.studentNumber || '';
 if(location.hash === '#teacher') state.screen = 'teacher';
 if(location.hash === '#admin') state.screen = 'admin';
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(()=>{});
