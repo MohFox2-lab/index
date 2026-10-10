@@ -106,6 +106,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
 
 <script>
 
@@ -345,10 +346,11 @@ function startFromList(list, limit){
   state.screen = 'quiz'; render();
   if(state.mode === 'exam') startTimer();
 }
-function startDue(){ startFromList(BANK.filter(isDue), 20); }
+function startDue(){ startFromList(BANK.filter(q => isDue(q) && isTopicEnabled(q.t,'practice')), 20); }
 function startBookTraining(){ startFromList(bookItems(), 0); }
-function reviewTopic(i){ state.selectedTopics = new Set([i]); state.selectedTypes = new Set(Object.keys(TYPE_META)); startFromList(BANK.filter(q => q.t === i), 15); }
+function reviewTopic(i){ if(!isTopicEnabled(i,'practice')){ alert('هذا الموضوع غير متاح حاليًا حسب خطة المعلم.'); return; } state.selectedTopics = new Set([i]); state.selectedTypes = new Set(Object.keys(TYPE_META)); startFromList(BANK.filter(q => q.t === i), 15); }
 function startTopicRemaining(i){
+  if(!isTopicEnabled(i,'practice')){ alert('هذا الموضوع غير متاح حاليًا حسب خطة المعلم.'); return; }
   const remaining = BANK.filter(q => q.t === i && !(PROG[q.id] && PROG[q.id].mastered));
   if(!remaining.length){ alert('🎉 أنت متقن جميع أسئلة هذا الموضوع حالياً. التذكير المتباعد سيعيد بعضها للتثبيت.'); return; }
   state.selectedTopics = new Set([i]);
@@ -442,13 +444,15 @@ function toolsCard(){
     ${lastResultBtn}
     ${TASK_CONFIG.title ? `<div class="p-3 rounded-xl mb-3" style="border:1.5px solid var(--line)">
         <div class="font-extrabold text-sm mb-2">📎 تسليم المهمة: ${esc(TASK_CONFIG.title)}</div>
-        <input id="task-link" type="url" inputmode="url" placeholder="رابط العمل (Google Drive / OneDrive …)" dir="ltr"
+        <input id="task-file" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm mb-2" style="border-color:var(--line)">
+        <input id="task-link" type="url" inputmode="url" placeholder="أو رابط العمل (Google Drive / OneDrive …)" dir="ltr"
           class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm mb-2" style="border-color:var(--line)">
         <textarea id="task-note" rows="2" placeholder="ملاحظة للمعلم (اختياري)"
           class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm mb-2" style="border-color:var(--line)"></textarea>
         <button id="sendTaskBtn" onclick="sendTaskToTeacher()" class="btn btn-brand w-full py-2.5">📤 إرسال المهمة إلى المعلم</button>
         <div id="sendTaskMsg" class="text-xs mt-2"></div>
-        <p class="text-xs mt-1" style="color:var(--sub)">ارفع بحثك (PDF أو Word) أو مشروعك على Google Drive واجعل الرابط «لكل من لديه الرابط»، ثم الصقه هنا.</p>
+        <p class="text-xs mt-1" style="color:var(--sub)">يمكنك رفع PDF/Word مباشرة (حتى 10MB) أو وضع رابط. سيظهر الملف للمعلم داخل ملف الطالب.</p>
       </div>` : ''}
     <a href="${PARENT_PORTAL_URL}" target="_blank" rel="noopener" class="btn btn-outline w-full py-2.5 mb-3 block text-center" style="text-decoration:none">👨‍👩‍👦 إشعار أولياء الأمور (درجات ومتابعة الطالب)</a>
     ${inst}
@@ -654,7 +658,7 @@ function classOptions(){
 
 // ============================= إعدادات المعلم (تتحكم بما يراه الطلاب) =============================
 const ADMIN_EMAIL = 'mohfox2@hotmail.com';
-const CONFIG_CACHE_KEY = 'manhaj_app_config_v2';
+const CONFIG_CACHE_KEY = 'manhaj_app_config_v3';
 const DEFAULT_CONFIG = {
   practiceDisabledTopics: [],
   examDisabledTopics: [],
@@ -664,16 +668,21 @@ const DEFAULT_CONFIG = {
   gradeLabel: '',
   teacherName: '',
   termLabel: '',
-  monthlyPlan: { label: '', topics: [] },
+  settingsVersion: 3,
+  monthlyPlan: { label: 'الشهر الأول', topics: [0,1,2,3,4,5,6,7,8,9], locked: true },
   classes: []
 };
 let APP_CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
 function normalizeConfig(cfg){
   const c = Object.assign({}, DEFAULT_CONFIG, cfg || {});
+  c.settingsVersion = Number(c.settingsVersion || 0) || 3;
   c.practiceDisabledTopics = c.practiceDisabledTopics || [];
   c.examDisabledTopics = c.examDisabledTopics || [];
-  c.monthlyPlan = Object.assign({label:'', topics:[]}, c.monthlyPlan || {});
+  c.monthlyPlan = Object.assign({label:'الشهر الأول', topics:[0,1,2,3,4,5,6,7,8,9], locked:true}, c.monthlyPlan || {});
+  if (Number(c.settingsVersion) < 3 && (!Array.isArray(c.monthlyPlan.topics) || !c.monthlyPlan.topics.length)) { c.monthlyPlan.topics = [0,1,2,3,4,5,6,7,8,9]; c.monthlyPlan.label = c.monthlyPlan.label || 'الشهر الأول'; c.monthlyPlan.locked = true; c.settingsVersion = 3; }
+  c.monthlyPlan.topics = [...new Set((c.monthlyPlan.topics || []).map(Number).filter(i => i >= 0 && i < TOPIC_TITLES.length))];
+  c.monthlyPlan.locked = c.monthlyPlan.locked !== false;
   c.classes = Array.isArray(c.classes) ? c.classes.map(String) : [];
   return c;
 }
@@ -704,6 +713,11 @@ function fetchRemoteConfigSilently(){
   db.collection('app_config').doc('settings').get().then(doc => {
     if(doc.exists){
       APP_CONFIG = normalizeConfig(doc.data());
+      if (Number(doc.data().settingsVersion || 0) < 3 && (!doc.data().monthlyPlan || !Array.isArray(doc.data().monthlyPlan.topics) || !doc.data().monthlyPlan.topics.length)) {
+        APP_CONFIG.settingsVersion = 3;
+        APP_CONFIG.monthlyPlan = {label:'الشهر الأول', topics:[0,1,2,3,4,5,6,7,8,9], locked:true};
+        db.collection('app_config').doc('settings').set(APP_CONFIG, {merge:true}).catch(()=>{});
+      }
       cacheConfig(APP_CONFIG);
       // لو المطلوب الشهري موجود ولسه الطالب ما اختار مواضيع، نفعّله تلقائيًا
       applyMonthlyPlanDefaultIfFresh();
@@ -716,7 +730,10 @@ function fetchRemoteConfigSilently(){
 function isTopicEnabled(i, mode){
   mode = mode || state.mode;
   const list = mode === 'exam' ? APP_CONFIG.examDisabledTopics : APP_CONFIG.practiceDisabledTopics;
-  return !(list || []).includes(i);
+  if ((list || []).includes(i)) return false;
+  const plan = APP_CONFIG.monthlyPlan || {};
+  if (plan.locked && Array.isArray(plan.topics) && plan.topics.length) return plan.topics.map(Number).includes(Number(i));
+  return true;
 }
 
 function enabledTopicIndices(mode){
@@ -795,6 +812,7 @@ function adminSaveConfig(){
   APP_CONFIG.teacherName = $v('admin-teacher');
   APP_CONFIG.termLabel = $v('admin-term');
   APP_CONFIG.monthlyPlan.label = $v('admin-plan-label');
+  APP_CONFIG.monthlyPlan.locked = !!document.getElementById('admin-plan-lock')?.checked;
 
   if(!db){ msgEl.textContent = 'تعذّر الاتصال — تأكد من الإنترنت.'; msgEl.style.color = '#e11d48'; return; }
   msgEl.textContent = 'جارٍ الحفظ…'; msgEl.style.color = 'var(--sub)';
@@ -807,7 +825,8 @@ function adminSaveConfig(){
     gradeLabel: APP_CONFIG.gradeLabel || '',
     teacherName: APP_CONFIG.teacherName || '',
     termLabel: APP_CONFIG.termLabel || '',
-    monthlyPlan: APP_CONFIG.monthlyPlan || {label:'',topics:[]},
+    settingsVersion: 3,
+    monthlyPlan: APP_CONFIG.monthlyPlan || {label:'الشهر الأول',topics:[0,1,2,3,4,5,6,7,8,9],locked:true},
     classes: APP_CONFIG.classes || [],
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }).then(() => {
@@ -875,6 +894,7 @@ function renderAdmin(){
       </div>
     </div>
 
+    ${activePlan.locked && planTopics.length ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(14,164,114,.06)"><div class="font-extrabold text-sm">📅 ${esc(activePlan.label || 'الخطة الحالية')}</div><div class="text-xs mt-1" style="color:var(--sub)">المواضيع المطلوبة عليك الآن: ${planTopics.map(i=>esc(TOPIC_TITLES[i])).join(' · ')}<br>🔒 لا يمكن بدء تدريب أو اختبار خارج هذه الخطة.</div></div>` : ''}
     <div class="card p-4 md:p-6 mb-4">
       <h2 class="font-extrabold mb-1">🔒 التحكم في التطبيق</h2>
       <label class="flex items-center gap-2 mt-2" style="cursor:pointer" onclick="event.preventDefault(); adminTogglePracticeOnly()">
@@ -914,6 +934,7 @@ function renderAdmin(){
       <input id="admin-plan-label" type="text" placeholder="مثال: الشهر الأول"
         value="${esc(APP_CONFIG.monthlyPlan.label||'')}"
         class="w-full mb-2 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)">
+      <label class="flex items-center gap-2 text-sm mb-2" style="cursor:pointer"><input id="admin-plan-lock" type="checkbox" ${APP_CONFIG.monthlyPlan.locked !== false ? 'checked':''}> 🔒 إلزام الطالب بهذه الخطة (يُمنع من حل المواضيع خارجها)</label>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-1">${planRows}</div>
     </div>
 
@@ -990,12 +1011,25 @@ function showSendWarning(st){
   </div>`;
   document.body.appendChild(div);
 }
+function resumeQuestionIndices(indices){
+  const qz = state.quiz;
+  const wanted = [...new Set(indices)].filter(i => i >= 0 && i < qz.questions.length);
+  if(!wanted.length){ alert('ما فيه أسئلة تحتاج إعادة.'); return; }
+  // نعيد فقط الأسئلة المستهدفة داخل نفس الجلسة، مع الحفاظ على بقية الإجابات والنتيجة.
+  wanted.forEach(i => { qz.answers[i] = null; });
+  qz.score = qz.questions.reduce((sum, q, i) => sum + (qz.answers[i]?.scoreVal || 0), 0);
+  qz.index = wanted[0];
+  qz.answered = false;
+  clearInterval(qz.timer);
+  state.screen = 'quiz';
+  render();
+  if(state.mode === 'exam') startTimer();
+}
 function resumeUnanswered(){
   closeSendWarning();
   const qz = state.quiz;
-  const list = qz.questions.filter((qq,i) => !qz.answers[i]).map(qq => BYID[qq.id]).filter(Boolean);
-  if(!list.length){ alert('ما فيه أسئلة متبقية.'); return; }
-  startFromList(list, 0);
+  const indices = qz.questions.map((qq,i) => !qz.answers[i] ? i : -1).filter(i => i >= 0);
+  resumeQuestionIndices(indices);
 }
 
 async function sendTokenToTeacher(force){
@@ -1070,8 +1104,9 @@ async function sendTokenToTeacher(force){
 }
 function retryWrong(){
   const qz = state.quiz;
-  const list = qz.questions.filter((qq,i) => !(qz.answers[i] && qz.answers[i].correct)).map(qq => BYID[qq.id]).filter(Boolean);
-  startFromList(list, 0);
+  const indices = qz.questions.map((qq,i) => (qz.answers[i] && !qz.answers[i].correct) ? i : -1).filter(i => i >= 0);
+  if(!indices.length){ alert('لا توجد أخطاء تحتاج تصحيحًا.'); return; }
+  resumeQuestionIndices(indices);
 }
 function needName(){
   if((state.studentName || '').trim()){ SETT.name = state.studentName; SETT.cls = state.studentClass; SETT.studentNumber = state.studentNumber; saveSett(); return false; }
@@ -1728,6 +1763,7 @@ function renderSetup(){
     ? `<div class="card p-3 md:p-4 mb-4" style="border:2px solid var(--brand);background:rgba(15,110,107,.06)">
         <p class="text-sm font-extrabold mb-1" style="color:var(--brand-dark)">📅 المطلوب منك الآن${APP_CONFIG.monthlyPlan.label ? ' — ' + esc(APP_CONFIG.monthlyPlan.label) : ''}</p>
         <div class="flex flex-wrap gap-1">${planTopics.map(i => TOPIC_TITLES[i] ? `<span class="chip active" style="pointer-events:none;font-size:.75rem;padding:3px 10px">${esc(TOPIC_TITLES[i])}</span>` : '').join('')}</div>
+        ${APP_CONFIG.monthlyPlan.locked ? '<div class="text-xs mt-2 font-bold" style="color:var(--brand-dark)">🔒 هذه هي المواضيع المطلوبة حاليًا ولا يمكن حل موضوع خارجها.</div>' : ''}
       </div>`
     : '';
   const typeCards = Object.keys(TYPE_META).map(k=>{
@@ -1854,6 +1890,8 @@ function renderSetup(){
 // ============================= بدء الجلسة =============================
 function startQuiz(){
   if(needName()) return;
+  state.selectedTopics = new Set([...state.selectedTopics].filter(i => isTopicEnabled(i, state.mode)));
+  if(APP_CONFIG.monthlyPlan && APP_CONFIG.monthlyPlan.locked && APP_CONFIG.monthlyPlan.topics && APP_CONFIG.monthlyPlan.topics.length && !state.selectedTopics.size){ alert('لا توجد مواضيع متاحة لك حاليًا حسب خطة المعلم.'); return; }
   if(state.selectedTopics.size===0 || state.selectedTypes.size===0){ alert('اختر موضوعاً ونوع أسئلة واحداً على الأقل.'); return; }
   let pool = buildQuestionPool([...state.selectedTopics], state.selectedTypes);
   pool = state.smart ? smartOrder(pool) : shuffleArr(pool);
@@ -2143,8 +2181,10 @@ function goNext(auto){
   if(!state.quiz.answers[state.quiz.index] && state.mode==='exam'){
     state.quiz.answers[state.quiz.index] = {correct:false, scoreVal:0, skipped:true};
   }
-  if(state.quiz.index < state.quiz.questions.length - 1){
-    state.quiz.index++;
+  let next = state.quiz.index + 1;
+  while(next < state.quiz.questions.length && state.quiz.answers[next]) next++;
+  if(next < state.quiz.questions.length){
+    state.quiz.index = next;
     state.quiz.answered = false;
     render();
     if(state.mode === 'exam') startTimer();
@@ -2253,6 +2293,8 @@ function startFlash(){
 function renderFlash(){
   const f = state.flash;
   const c = f.cards[f.index];
+  const activePlan = APP_CONFIG.monthlyPlan || {};
+  const planTopics = Array.isArray(activePlan.topics) ? activePlan.topics.filter(i => isTopicEnabled(i, state.mode)) : [];
   app.innerHTML = `<div class="fade-in">
     <div class="flex items-center justify-between mb-3 text-sm">
       <button onclick="backToSetup()" class="btn btn-outline py-1.5 px-4 text-xs">🚪 خروج</button>
