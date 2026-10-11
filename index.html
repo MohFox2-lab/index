@@ -2335,7 +2335,16 @@ if(window.firebase && firebase.auth){
 state.studentName = SETT.name || ''; state.studentClass = canonicalizeClass(SETT.cls || ''); state.studentNumber = SETT.studentNumber || '';
 if(location.hash === '#teacher') state.screen = 'teacher';
 if(location.hash === '#admin') state.screen = 'admin';
-if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  // تحديث تلقائي: يفحص وجود نسخة جديدة عند الفتح وعند الرجوع للتطبيق، ويعيد التحميل مرة واحدة عند وصولها.
+  const hadCtrl = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if(hadCtrl && !reloaded){ reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(reg => {
+    const chk = () => reg.update().catch(()=>{});
+    document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') chk(); });
+    setInterval(chk, 30*60*1000);
+  }).catch(()=>{});
+}
 render();
 
 </script>
