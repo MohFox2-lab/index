@@ -436,7 +436,7 @@ function toolsCard(){
         ? `<p class="text-xs mb-3 p-2.5 rounded-xl" style="background:rgba(245,158,11,.12);color:var(--ink)">⚠️ زر «ثبّت التطبيق» يظهر فقط عند فتح التطبيق من رابط إنترنت (مثل الموقع الذي رفعتموه عليه)، ولا يعمل عند فتح ملف HTML مباشرة من الجهاز. افتح رابط الموقع بدل الملف لتتمكن من التثبيت.</p>`
         : `<p class="text-xs mb-3" style="color:var(--sub)">📲 للتثبيت على الجوال: من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» (في آيفون: زر المشاركة ثم «إضافة إلى الشاشة الرئيسية»). إن لم يظهر الخيار، جرّب فتح الرابط من متصفح Chrome أو Safari مباشرة بدل متصفح واتساب أو أي تطبيق آخر.</p>`);
   const lastResult = getLastResult();
-  const lastResultBtn = (lastResult && lastResult.quiz && lastResult.quiz.token)
+  const lastResultBtn = (APP_CONFIG.achievementCodeEnabled !== false && lastResult && lastResult.quiz && lastResult.quiz.token)
     ? `<button onclick="goToLastResult()" class="btn btn-brand w-full py-2.5 mb-3">🏅 الحصول على رمز الإنجاز (آخر نتيجة)</button>`
     : '';
   return `<div class="card p-4 md:p-6 mb-4">
@@ -664,6 +664,7 @@ const DEFAULT_CONFIG = {
   examDisabledTopics: [],
   announcement: '',
   practiceOnlyMode: false,
+  achievementCodeEnabled: true,
   subjectName: '',
   gradeLabel: '',
   teacherName: '',
@@ -684,6 +685,7 @@ function normalizeConfig(cfg){
   c.monthlyPlan.topics = [...new Set((c.monthlyPlan.topics || []).map(Number).filter(i => i >= 0 && i < TOPIC_TITLES.length))];
   c.monthlyPlan.locked = c.monthlyPlan.locked !== false;
   c.classes = Array.isArray(c.classes) ? c.classes.map(String) : [];
+  c.achievementCodeEnabled = c.achievementCodeEnabled !== false;
   return c;
 }
 
@@ -722,7 +724,7 @@ function fetchRemoteConfigSilently(){
       // لو المطلوب الشهري موجود ولسه الطالب ما اختار مواضيع، نفعّله تلقائيًا
       applyMonthlyPlanDefaultIfFresh();
       // لو الطالب واقف بشاشة الإعداد وقت وصول الإعدادات، حدّث العرض بهدوء
-      if(state.screen === 'setup') render();
+      if(state.screen === 'setup' || state.screen === 'result') render();
     }
   }).catch(()=>{ /* يبقى يشتغل بآخر نسخة محفوظة محليًا، بدون إزعاج الطالب */ });
 }
@@ -1031,6 +1033,7 @@ function resumeUnanswered(){
 }
 
 async function sendTokenToTeacher(force){
+  if(APP_CONFIG.achievementCodeEnabled === false){ alert('رمز الإنجاز موقوف حاليًا من المعلم — التطبيق للتدريب فقط.'); return; }
   const btn = document.getElementById('sendTokenBtn');
   const msgEl = document.getElementById('sendTokenMsg');
   if(!btn || !msgEl) return;
@@ -2240,7 +2243,9 @@ function renderResult(){
     : `<div class="p-4 rounded-xl mb-4" style="background:rgba(14,164,114,.12)">🎉 لا أخطاء في هذه الجلسة، أحسنت!</div>`;
   if(!q.token) q.token = makeToken();
   const correctN = q.answers.filter(a => a && a.correct).length;
-  const cert = `<div class="p-4 rounded-xl text-right" style="border:2px dashed var(--brand)">
+  const cert = APP_CONFIG.achievementCodeEnabled === false
+    ? `<div class="p-4 rounded-xl text-center" style="border:2px dashed var(--line)"><h3 class="font-extrabold mb-1">🧠 وضع التدريب</h3><p class="text-sm" style="color:var(--sub)">رمز الإنجاز موقوف حاليًا من المعلم. تدرّب براحتك، وسيظهر الرمز عندما يفعّله المعلم.</p></div>`
+    : `<div class="p-4 rounded-xl text-right" style="border:2px dashed var(--brand)">
       <h3 class="font-extrabold mb-1">🏅 رمز الإنجاز</h3>
        <p class="text-sm mb-2" style="color:var(--sub)">${esc(state.studentName)} ${state.studentNumber ? '· ' + esc(state.studentNumber) : ''} ${state.studentClass ? '· ' + esc(state.studentClass) : ''} · ${correctN} صحيحة من ${total}</p>
        <div class="selectable p-2 rounded-lg text-xs mb-2" style="background:rgba(100,116,139,.12);font-family:monospace;direction:ltr;text-align:left;white-space:nowrap;overflow-x:auto;max-width:100%">${q.token}</div>
