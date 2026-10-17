@@ -454,7 +454,7 @@ function toolsCard(){
         <div id="sendTaskMsg" class="text-xs mt-2"></div>
         <p class="text-xs mt-1" style="color:var(--sub)">يمكنك رفع PDF/Word مباشرة (حتى 10MB) أو وضع رابط. سيظهر الملف للمعلم داخل ملف الطالب.</p>
       </div>` : ''}
-    <a href="${PARENT_PORTAL_URL}" target="_blank" rel="noopener" class="btn btn-outline w-full py-2.5 mb-3 block text-center" style="text-decoration:none">👨‍👩‍👦 إشعار أولياء الأمور (درجات ومتابعة الطالب)</a>
+    ${APP_CONFIG.parentPortalEnabled !== false ? `<a href="${PARENT_PORTAL_URL}" target="_blank" rel="noopener" class="btn btn-outline w-full py-2.5 mb-3 block text-center" style="text-decoration:none">👨‍👩‍👦 إشعار أولياء الأمور (درجات ومتابعة الطالب)</a>` : ''}
     ${inst}
     <div class="mb-3"><div class="text-xs font-bold mb-1" style="color:var(--sub)">🔠 حجم الخط</div><div class="flex flex-wrap gap-2">${chips}</div></div>
     <label class="flex items-center gap-2 text-sm mb-3 cursor-pointer"><input type="checkbox" ${state.smart?'checked':''} onchange="toggleSmart()"> 🧠 ترتيب ذكي: تظهر الأسئلة المستحقة للمراجعة أولاً (التكرار المتباعد)</label>
@@ -665,6 +665,7 @@ const DEFAULT_CONFIG = {
   announcement: '',
   practiceOnlyMode: false,
   achievementCodeEnabled: true,
+  parentPortalEnabled: true,
   subjectName: '',
   gradeLabel: '',
   teacherName: '',
@@ -686,6 +687,7 @@ function normalizeConfig(cfg){
   c.monthlyPlan.locked = c.monthlyPlan.locked !== false;
   c.classes = Array.isArray(c.classes) ? c.classes.map(String) : [];
   c.achievementCodeEnabled = c.achievementCodeEnabled !== false;
+  c.parentPortalEnabled = c.parentPortalEnabled !== false;
   return c;
 }
 
