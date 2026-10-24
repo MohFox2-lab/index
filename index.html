@@ -857,7 +857,7 @@ function renderPortfolioShell(){
   if(window.renderPortfolio){ window.renderPortfolio(); return; }
   app.innerHTML = '<div class="card p-8 text-center mt-10">جارٍ تحميل ملف الإنجاز…</div>';
   const s = document.createElement('script');
-  s.src = 'portfolio.js?v=9';
+  s.src = 'portfolio.js?v=4';
   s.onload = () => { if(state.screen === 'portfolio') render(); };
   s.onerror = () => { app.innerHTML = '<div class="card p-8 text-center mt-10">تعذّر تحميل ملف portfolio.js — تأكد من رفعه بجانب index.html.<br><button class="btn btn-outline mt-4 px-4 py-2" onclick="state.screen=\'setup\';render()">رجوع</button></div>'; };
   document.body.appendChild(s);
