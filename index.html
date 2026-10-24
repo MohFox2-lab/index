@@ -666,6 +666,7 @@ const DEFAULT_CONFIG = {
   practiceOnlyMode: false,
   achievementCodeEnabled: true,
   parentPortalEnabled: true,
+  portfolioEnabled: true,
   subjectName: '',
   gradeLabel: '',
   teacherName: '',
@@ -688,6 +689,7 @@ function normalizeConfig(cfg){
   c.classes = Array.isArray(c.classes) ? c.classes.map(String) : [];
   c.achievementCodeEnabled = c.achievementCodeEnabled !== false;
   c.parentPortalEnabled = c.parentPortalEnabled !== false;
+  c.portfolioEnabled = c.portfolioEnabled !== false;
   return c;
 }
 
@@ -824,6 +826,9 @@ function adminSaveConfig(){
     examDisabledTopics: APP_CONFIG.examDisabledTopics || [],
     announcement: APP_CONFIG.announcement || '',
     practiceOnlyMode: !!APP_CONFIG.practiceOnlyMode,
+    achievementCodeEnabled: APP_CONFIG.achievementCodeEnabled !== false,
+    parentPortalEnabled: APP_CONFIG.parentPortalEnabled !== false,
+    portfolioEnabled: APP_CONFIG.portfolioEnabled !== false,
     subjectName: APP_CONFIG.subjectName || '',
     gradeLabel: APP_CONFIG.gradeLabel || '',
     teacherName: APP_CONFIG.teacherName || '',
@@ -841,6 +846,21 @@ function adminSaveConfig(){
     msgEl.textContent = 'تعذّر الحفظ. حاول مرة أخرى.';
     msgEl.style.color = '#e11d48';
   });
+}
+
+// ملف إنجاز المعلم: وحدة ثابتة (portfolio.js) تُحمَّل للمعلم فقط عند الحاجة
+function renderPortfolioShell(){
+  if(APP_CONFIG.portfolioEnabled === false){
+    app.innerHTML = '<div class="card p-8 text-center mt-10"><div class="text-3xl mb-2">🔒</div><h2 class="font-extrabold text-lg">تبويب ملف الإنجاز غير مفعّل حاليًا</h2><p class="text-sm mt-2" style="color:var(--sub)">يمكن تفعيله من لوحة teacher7.</p><button class="btn btn-outline mt-4 px-4 py-2" onclick="backToSetup()">العودة للتطبيق</button></div>';
+    return;
+  }
+  if(window.renderPortfolio){ window.renderPortfolio(); return; }
+  app.innerHTML = '<div class="card p-8 text-center mt-10">جارٍ تحميل ملف الإنجاز…</div>';
+  const s = document.createElement('script');
+  s.src = 'portfolio.js?v=9';
+  s.onload = () => { if(state.screen === 'portfolio') render(); };
+  s.onerror = () => { app.innerHTML = '<div class="card p-8 text-center mt-10">تعذّر تحميل ملف portfolio.js — تأكد من رفعه بجانب index.html.<br><button class="btn btn-outline mt-4 px-4 py-2" onclick="state.screen=\'setup\';render()">رجوع</button></div>'; };
+  document.body.appendChild(s);
 }
 
 function renderAdmin(){
@@ -893,6 +913,7 @@ function renderAdmin(){
       <h1 class="font-extrabold text-xl">⚙️ إعدادات المعلم</h1>
       <div class="flex gap-2">
         <button onclick="state.screen='setup'; render();" class="btn btn-outline text-sm py-2 px-3">رجوع للتطبيق</button>
+        ${APP_CONFIG.portfolioEnabled !== false ? `<button onclick="state.screen='portfolio'; render();" class="btn btn-outline text-sm py-2 px-3">📁 ملف الإنجاز</button>` : `<span class="text-xs px-2 py-2" style="color:var(--sub)">🔒 ملف الإنجاز معطّل من teacher7</span>`}
         <button onclick="adminLogout()" class="btn btn-outline text-sm py-2 px-3">🔒 خروج</button>
       </div>
     </div>
@@ -1112,10 +1133,15 @@ function retryWrong(){
   resumeQuestionIndices(indices);
 }
 function needName(){
-  if((state.studentName || '').trim()){ SETT.name = state.studentName; SETT.cls = state.studentClass; SETT.studentNumber = state.studentNumber; saveSett(); return false; }
+  // الاسم والفصل ورقم الكشف كلها مطلوبة: درجات الطالب وتقرير ولي أمره يعتمدان على الرقم
+  const miss = [];
+  if(!(state.studentName || '').trim()) miss.push({t:'اسمك', id:'inp-name'});
+  if(!(state.studentClass || '').trim()) miss.push({t:'فصلك', id:'inp-class'});
+  if(!String(state.studentNumber || '').trim()) miss.push({t:'رقمك في الكشف', id:'inp-student-number'});
+  if(!miss.length){ SETT.name = state.studentName; SETT.cls = state.studentClass; SETT.studentNumber = state.studentNumber; saveSett(); return false; }
   if(state.screen !== 'setup'){ state.screen = 'setup'; render(); }
-  alert('اكتب اسمك أولاً — يُستخدم في رمز الإنجاز الذي يطلبه المعلم.');
-  const el = document.getElementById('inp-name'); if(el) el.focus();
+  alert('أكمل بياناتك أولاً: ' + miss.map(m => m.t).join(' و') + ' — تُستخدم في رمز الإنجاز وفي تقرير ولي أمرك.');
+  const el = document.getElementById(miss[0].id); if(el) el.focus();
   return true;
 }
 function renderTeacher(){
@@ -1709,6 +1735,7 @@ function render(){
   else if(state.screen === 'teacher') renderTeacher();
   else if(state.screen === 'lab') renderLab();
   else if(state.screen === 'admin') renderAdmin();
+  else if(state.screen === 'portfolio') renderPortfolioShell();
 }
 
 function toggleTopic(i){
@@ -1789,7 +1816,7 @@ function renderSetup(){
   <div class="fade-in">
     <header class="text-center mb-5 mt-2">
       <div class="text-4xl mb-1">🔬🧪🩺</div>
-      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v9.0</span></h1>
+      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v9.2</span></h1>
       <p class="text-sm md:text-base mt-1" style="color:var(--sub)">${esc(APP_CONFIG.gradeLabel || 'الصف الثاني المتوسط')} — ${esc(APP_CONFIG.termLabel || 'الفصل الدراسي الأول 1448هـ')} · دربّني قبل الاختبار!</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">${esc(APP_CONFIG.teacherName || TEACHER_NAME)}</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">المدير: ${DIRECTOR_NAME}</p>
@@ -2337,11 +2364,12 @@ loadCachedTask();
 applyMonthlyPlanDefaultIfFresh();
 fetchRemoteConfigSilently();
 if(window.firebase && firebase.auth){
-  firebase.auth().onAuthStateChanged(() => { if(state.screen === 'admin') render(); });
+  firebase.auth().onAuthStateChanged(() => { if(state.screen === 'admin' || state.screen === 'portfolio') render(); });
 }
 state.studentName = SETT.name || ''; state.studentClass = canonicalizeClass(SETT.cls || ''); state.studentNumber = SETT.studentNumber || '';
 if(location.hash === '#teacher') state.screen = 'teacher';
 if(location.hash === '#admin') state.screen = 'admin';
+if(location.hash === '#portfolio') state.screen = 'portfolio';
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   // تحديث تلقائي: يفحص وجود نسخة جديدة عند الفتح وعند الرجوع للتطبيق، ويعيد التحميل مرة واحدة عند وصولها.
   const hadCtrl = !!navigator.serviceWorker.controller; let reloaded = false;
