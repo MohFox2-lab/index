@@ -1725,6 +1725,15 @@ function labCard(){
     </div></div>`;
 }
 
+function portfolioCard(){
+  if(APP_CONFIG.portfolioEnabled === false) return '';
+  return `<div class="card p-4 md:p-6 mb-4" style="border:2px solid var(--brand)">
+    <h2 class="font-extrabold text-lg mb-1">📁 ملف إنجاز المعلم</h2>
+    <p class="text-sm mb-3" style="color:var(--sub)">الشواهد والخطط والتقارير والسيرة الذاتية — يتطلب تسجيل دخول المعلم.</p>
+    <button onclick="state.screen='portfolio'; render();" class="btn btn-brand text-sm py-2 px-4">📁 فتح ملف الإنجاز</button>
+  </div>`;
+}
+
 function render(){
   if(state.screen === 'quiz') saveActiveQuiz();
   if(state.screen === 'setup') renderSetup();
@@ -1816,7 +1825,7 @@ function renderSetup(){
   <div class="fade-in">
     <header class="text-center mb-5 mt-2">
       <div class="text-4xl mb-1">🔬🧪🩺</div>
-      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v9.2</span></h1>
+      <h1 class="text-2xl md:text-4xl font-black" style="color:var(--brand-dark)">${esc(APP_CONFIG.subjectName || 'مدرّب منهج العلوم')} <span style="font-size:.45em;font-weight:700;color:var(--sub)">v10</span></h1>
       <p class="text-sm md:text-base mt-1" style="color:var(--sub)">${esc(APP_CONFIG.gradeLabel || 'الصف الثاني المتوسط')} — ${esc(APP_CONFIG.termLabel || 'الفصل الدراسي الأول 1448هـ')} · دربّني قبل الاختبار!</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">${esc(APP_CONFIG.teacherName || TEACHER_NAME)}</p>
       <p class="text-xs mt-1 font-bold" style="color:var(--brand-dark)">المدير: ${DIRECTOR_NAME}</p>
@@ -1826,6 +1835,7 @@ function renderSetup(){
      ${planBanner}
      ${progressCards()}
      ${labCard()}
+     ${portfolioCard()}
      ${resumeCard}
     <div class="card p-4 md:p-6 mb-4">
       <h2 class="font-extrabold text-lg mb-3">👤 بيانات الطالب</h2>
