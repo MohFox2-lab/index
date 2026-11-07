@@ -47,7 +47,7 @@
     { id: "workshops", group: "التطوير المهني", icon: "🛠️", title: "ورش العمل", table: "workshops", std: [2], cat: "initiatives-programs", titleOf: ["title"], dateField: "workshopDate",
       list: ["type", "workshopDate", "location"], fields: [T("title", "عنوان الورشة"), S("type", "نوع المشاركة", ["حضور", "تقديم"]), D("workshopDate", "التاريخ"), T("location", "المكان")] },
     { id: "ethics-charter", group: "التطوير المهني", icon: "📜", title: "ميثاق أخلاقيات مهنة التعليم", table: "ethics_charter_commitments", std: [1], cat: "executive-reports", titleOf: ["teacherSignature"], titlePrefix: "التزام بميثاق أخلاقيات المهنة — ", dateField: "commitmentDate",
-      list: ["commitmentDate", "principalSignature"], fields: [D("commitmentDate", "تاريخ الالتزام"), T("teacherSignature", "توقيع المعلم/ة"), T("principalSignature", "مدير المدرسة"), IMG("charterImageUrl", "صورة الميثاق الموقّع"), A("notes", "الملاحظات", { span: 2 })] },
+      list: ["commitmentDate", "principalSignature"], fields: [D("commitmentDate", "تاريخ الالتزام"), T("teacherSignature", "توقيع المعلم/ة"), T("principalSignature", "مدير/ة المدرسة"), IMG("charterImageUrl", "صورة الميثاق الموقّع"), A("notes", "الملاحظات", { span: 2 })] },
 
     // ===================== الأداء التعليمي =====================
     { id: "classroom-activities", group: "الأداء التعليمي", icon: "🧩", title: "الأنشطة الصفية", table: "classroom_activities", std: [4, 8], cat: "activities-worksheets", titleOf: ["title"], dateField: "activityDate",
@@ -75,7 +75,7 @@
         T("visitorTeacherName", "اسم المعلم/ة الزائر"), T("visitedTeacherName", "اسم المعلم/ة المراد زيارته"), A("studentNames", "أسماء الطلاب/ات", { span: 2 }),
         f("indicators", "مؤشرات الزيارة (المؤشر 1–8)", "ratings", { items: VISIT_IND, options: RATING, span: 2, cols: ["indicator1", "indicator2", "indicator3", "indicator4", "indicator5", "indicator6", "indicator7", "indicator8"] }),
         A("positivePoints", "أبرز النقاط الإيجابية", { span: 2 }), T("visitorSignature", "المعلم/ة الزائر (توقيع)"), T("visitedSignature", "المعلم/ة المراد زيارته (توقيع)"),
-        T("deputySignature", "وكيل الشؤون التعليمية"), T("principalSignature", "مدير المدرسة")]) },
+        T("deputySignature", "وكيل الشؤون التعليمية"), T("principalSignature", "مدير/ة المدرسة")]) },
     { id: "learning-pattern", group: "الأداء التعليمي", icon: "🧠", title: "تحليل أنماط التعلم", table: "learning_pattern_analysis", std: [10, 4], cat: "analysis-assessment", titleOf: ["school"], titlePrefix: "تحليل أنماط التعلم — ",
       list: ["school", "totalStudents"], fields: EDU.concat([
         T("school", "المدرسة"), A("studentNames", "أسماء الطلاب/ات", { span: 2 }), N("visualCount", "النمط البصري"), N("auditoryCount", "النمط السمعي"),
@@ -139,7 +139,7 @@
       list: ["implementingEntity", "targetGroup", "executionDate"], fields: [
         T("school", "المدرسة"), D("executionDate", "التاريخ"), T("programName", "اسم البرنامج/النشاط"), T("programTitle", "مسمى البرنامج"), T("implementingEntity", "الجهة المنفذة"),
         T("targetGroup", "الفئة المستهدفة"), N("targetCount", "عدد المستهدفين"), T("studentsCommittee", "لجنة الطلاب/ات"), T("stage", "المرحلة"), T("implementationLocation", "مكان التنفيذ"),
-        T("timing", "التوقيت"), T("viewersCommittee", "لجنة المشاهدين"), T("principalSignature", "مدير المدرسة"), T("supervisorSignature", "المشرف/ة التربوي")] },
+        T("timing", "التوقيت"), T("viewersCommittee", "لجنة المشاهدين"), T("principalSignature", "مدير/ة المدرسة"), T("supervisorSignature", "المشرف/ة التربوي")] },
     { id: "program-execution", group: "الإنجازات والمشاركة", icon: "🚀", title: "تنفيذ البرامج والأنشطة", table: "program_execution_forms", std: [2], cat: "initiatives-programs", titleOf: ["title"],
       list: ["targetAudience", "activityType"], fields: [
         T("title", "عنوان البرنامج/النشاط"), S("targetAudience", "الفئة المستهدفة", ["طلاب", "معلمين", "أولياء أمور"]), S("activityType", "نوع النشاط", ["نادي علمي", "مسابقة", "إذاعة مدرسية", "زيارة خارجية"]),

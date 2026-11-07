@@ -331,7 +331,7 @@
       "th{background:#e8f1f0;width:26%}ul{margin:0;padding-right:18px}.sig{display:flex;justify-content:space-between;margin-top:36px}</style></head><body>" +
       (window.PF_HEADER ? window.PF_HEADER({ name: pr.name, school: pr.school, region: pr.region || "" }) + "<div style='text-align:left;font-size:12px'>العام الدراسي: " + esc(pr.year || "") + "</div>" : "<div class='top'><div>المملكة العربية السعودية<br>وزارة التعليم<br>" + esc(pr.school || "") + "</div><div style='text-align:left'>العام الدراسي: " + esc(pr.year || "") + "</div></div>") +
       "<h1>" + esc(TYPES[p.type].label) + " — " + esc(p.subject || "العلوم") + "</h1><table>" + rows + "</table>" +
-      "<div class='sig'><div>المعلم/ة: " + esc(p.teacherName || pr.name || "") + "<br>التوقيع: ..............</div><div>مدير المدرسة: " + esc(p.supervisorName || pr.principal || "") + "<br>التوقيع: ..............</div></div></body></html>";
+      "<div class='sig'><div>المعلم/ة: " + esc(p.teacherName || pr.name || "") + "<br>التوقيع: ..............</div><div>مدير/ة المدرسة: " + esc(p.supervisorName || pr.principal || "") + "<br>التوقيع: ..............</div></div></body></html>";
     var w = window.open("", "_blank");
     if (!w) { say("المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.", false); return; }
     w.document.open(); w.document.write(html); w.document.close();

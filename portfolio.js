@@ -343,7 +343,7 @@
       "<h1>ملف إنجاز المعلم/ة</h1><div class='sub'>" + esc([p.name, p.subject, p.school, p.year].filter(Boolean).join(" — ")) + "</div>" +
       "<table><thead><tr><th>م</th><th>المعيار</th><th>الوزن</th><th>عدد الشواهد</th><th>الحالة</th></tr></thead><tbody>" + rows +
       "</tbody></table><p>الأوزان الموثّقة بشواهد: <b>" + got + "</b> من <b>" + total + "</b> — إجمالي الشواهد: <b>" + standardItems().length + "</b></p>" +
-      detail + "<div class='sig'><div>المعلم/ة: " + esc(p.name || "") + "</div><div>مدير المدرسة: " + esc(p.principal || "") + "</div></div></body></html>";
+      detail + "<div class='sig'><div>المعلم/ة: " + esc(p.name || "") + "</div><div>مدير/ة المدرسة: " + esc(p.principal || "") + "</div></div></body></html>";
     var w = window.open("", "_blank");
     if (!w) { say("المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.", false); return; }
     w.document.open(); w.document.write(html); w.document.close();
@@ -517,7 +517,7 @@
       '<div class="flex gap-2 flex-wrap"><button class="btn btn-brand py-2 px-4" onclick="window.PFui.print(false)">🖨️ طباعة التقرير</button>' +
       '<button class="btn btn-outline py-2 px-4" onclick="window.PFui.print(true)">🖼️ طباعة مع الصور المرفقة</button></div></div>' +
       '<div class="card p-4 mb-3"><h2 class="font-extrabold mb-2">👤 بيانات المعلم/ة (تظهر في التقرير)</h2><div class="grid md:grid-cols-2 gap-3">' +
-      [["name", "اسم المعلم/ة"], ["subject", "المادة"], ["school", "المدرسة"], ["year", "العام الدراسي"], ["principal", "مدير المدرسة"]].map(function (f) {
+      [["name", "اسم المعلم/ة"], ["subject", "المادة"], ["school", "المدرسة"], ["year", "العام الدراسي"], ["principal", "مدير/ة المدرسة"]].map(function (f) {
         return '<div><label class="text-xs font-bold">' + f[1] + '</label><input id="pf-p-' + f[0] + '" class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)" value="' + esc((PF.profile || {})[f[0]] || "") + '"></div>';
       }).join("") + '</div><button class="btn btn-brand mt-3 py-2 px-4" onclick="window.PFui.saveProfile()">💾 حفظ البيانات</button></div>' +
       '<div class="card p-4"><h2 class="font-extrabold mb-1">💾 نسخة احتياطية</h2><p class="text-xs mb-2" style="color:var(--sub)">تحفظ بيانات الشواهد (بدون الملفات المرفقة) في ملف JSON.</p>' +
