@@ -440,22 +440,43 @@
   }
 
   function viewOverview() {
-    var c = counts(), done = 0, wsum = 0, wdone = 0;
+    var c = counts(), done = 0, wsum = 0, wdone = 0, total = standardItems().length;
     STANDARDS.forEach(function (s) { wsum += s.weight; if (c[s.id]) { done++; wdone += s.weight; } });
+    var coverage = STANDARDS.length ? Math.round((done / STANDARDS.length) * 100) : 0;
+    var weighted = wsum ? Math.round((wdone / wsum) * 100) : 0;
+    var stat = function (label, value, icon, note) {
+      return '<div class="card p-4" style="background:linear-gradient(145deg,#fff,#f0fdf4);border:1px solid #d1fae5;border-radius:16px;box-shadow:0 3px 12px rgba(5,150,105,.08)">' +
+        '<div class="flex items-center justify-between gap-2"><span class="text-sm font-bold" style="color:#64748b">' + label + '</span><span style="font-size:1.8rem">' + icon + '</span></div>' +
+        '<div class="text-3xl font-black mt-2" style="color:#059669">' + value + '</div><div class="text-xs mt-1" style="color:#94a3b8">' + note + '</div></div>';
+    };
+    var icons = {1:'⏰',2:'🤝',3:'👨‍👩‍👧',4:'🎯',5:'📈',6:'📝',7:'💻',8:'🏫',9:'📋',10:'📊',11:'✅'};
     var cards = STANDARDS.map(function (s) {
-      var n = c[s.id], need = s.required.length, pct = Math.min(100, Math.round((n / need) * 100));
-      var color = n === 0 ? "#e11d48" : (pct >= 100 ? "#0e8f5f" : "#d97706");
-      return '<div class="card p-4" style="border-right:5px solid ' + color + '">' +
-        '<div class="flex items-center justify-between gap-2"><div class="font-extrabold">' + s.id + '. ' + esc(s.title) + '</div>' +
-        '<span class="chip" style="pointer-events:none;font-size:.75rem">الوزن ' + s.weight + '</span></div>' +
-        '<div class="text-xs mt-1" style="color:var(--sub)">الشواهد المطلوبة: ' + s.required.map(esc).join("، ") + '</div>' +
-        '<div class="mt-2" style="height:8px;border-radius:99px;background:rgba(100,116,139,.2)"><div style="height:8px;border-radius:99px;width:' + pct + '%;background:' + color + '"></div></div>' +
-        '<div class="flex items-center justify-between mt-2 text-sm"><span>' + n + ' شاهد</span>' +
-        '<button class="btn btn-outline text-xs py-1 px-3" onclick="window.PFui.addFor(' + s.id + ')">➕ أضف شاهدًا</button></div></div>';
-    }).join("");
-    return '<div class="card p-4 mb-4 text-center"><div class="text-3xl font-black" style="color:var(--brand)">' + wdone + ' / ' + wsum + '</div>' +
-      '<div class="text-sm" style="color:var(--sub)">أوزان المعايير الموثّقة بشاهد واحد على الأقل (' + done + ' من 11 معيارًا) — إجمالي الشواهد ' + PF.items.length + '</div></div>' +
-      '<div class="grid gap-3 md:grid-cols-2">' + cards + '</div>';
+      var n = c[s.id], need = Math.max(1, s.required.length), pct = Math.min(100, Math.round((n / need) * 100));
+      var color = n === 0 ? '#d97706' : (pct >= 100 ? '#059669' : '#0d9488');
+      return '<article class="card p-4" style="border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.05);background:#fff">' +
+        '<div style="height:5px;margin:-16px -16px 14px;background:linear-gradient(90deg,#059669,#0d9488)"></div>' +
+        '<div class="flex items-start gap-3"><div style="font-size:2rem;line-height:1.2;min-width:40px">' + (icons[s.id] || '📘') + '</div><div class="flex-1 min-w-0">' +
+        '<div class="font-extrabold" style="color:#1f2937;line-height:1.6">' + s.id + '. ' + esc(s.title) + '</div>' +
+        '<div class="text-xs mt-1" style="color:#64748b;line-height:1.7">' + esc(s.description || s.examples.join('، ')) + '</div></div>' +
+        '<span class="chip" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;white-space:nowrap">' + s.weight + '%</span></div>' +
+        '<div class="mt-3 p-3" style="background:#f8fafc;border-radius:10px"><div class="flex justify-between items-center text-xs"><span style="color:#64748b">📎 الشواهد الموثقة</span><b style="color:#059669;font-size:1rem">' + n + '</b></div>' +
+        '<div class="mt-2" style="height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden"><div style="height:100%;width:' + pct + '%;border-radius:99px;background:linear-gradient(90deg,' + color + ',#34d399);transition:width .3s"></div></div>' +
+        '<div class="flex justify-between mt-1 text-xs" style="color:#94a3b8"><span>المطلوب الاسترشادي: ' + s.required.length + '</span><b style="color:' + color + '">' + pct + '%</b></div></div>' +
+        '<div class="text-xs mt-3" style="color:#64748b;line-height:1.7"><b>أمثلة الشواهد:</b> ' + s.required.map(esc).join('، ') + '</div>' +
+        '<div class="flex gap-2 mt-3"><button class="btn btn-brand flex-1 text-xs py-2" onclick="window.PFui.addFor(' + s.id + ')">➕ إضافة شاهد</button>' +
+        '<button class="btn btn-outline text-xs py-2 px-3" onclick="window.PFui.tab(this.dataset.tab)" data-tab="report">📄 التقرير</button></div></article>';
+    }).join('');
+    return '<section class="mb-4" style="background:linear-gradient(135deg,#f8fafc 0%,#d1fae5 55%,#ccfbf1 100%);border:1px solid #d1fae5;border-radius:18px;padding:18px">' +
+      '<div class="flex items-center justify-between flex-wrap gap-3"><div><div class="text-xl font-black" style="color:#1f2937">🛡️ لوحة متابعة معايير الأداء الوظيفي</div>' +
+      '<div class="text-sm mt-1" style="color:#64748b">متابعة الشواهد وتغطية المعايير الـ11 في ملف إنجاز المعلم/ة</div></div>' +
+      '<span class="chip" style="background:#059669;color:#fff;padding:7px 12px">🎓 منصة منهاج العلوم</span></div></section>' +
+      '<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-4">' +
+      stat('إجمالي الشواهد', total, '📄', 'الشواهد المرتبطة بالمعايير') +
+      stat('المعايير المغطاة', done + ' / ' + STANDARDS.length, '✅', 'معيار لديه شاهد واحد على الأقل') +
+      stat('نسبة التغطية', coverage + '%', '📊', 'نسبة المعايير التي لديها شواهد') +
+      stat('الأوزان المغطاة', weighted + '%', '⭐', 'مؤشر تغطية الأوزان وليس درجة تقييم') +
+      '</div><div class="flex items-center justify-between flex-wrap gap-2 mb-3"><h3 class="font-extrabold" style="color:#1f2937">📚 بطاقات المعايير</h3><span class="text-xs" style="color:#64748b">اختر إضافة شاهد أو افتح التقرير</span></div>' +
+      '<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">' + cards + '</div>';
   }
 
   function viewEvidence() {
