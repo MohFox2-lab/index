@@ -42,6 +42,27 @@
       keywords: ["تقويم", "اختبار", "مشروع", "مهمة", "أدائي", "ملف", "إنجاز", "تقييم", "قياس"] }
   ];
 
+  // نصوص التقارير الجاهزة من تطبيق «معايير جيبيتي 2.html».
+  // رُبطت بالمعايير الرسمية بحسب موضوع النص، لا بحسب رقم العنصر في التطبيق المستقل.
+  var SOURCE_REPORTS = {
+    1: { focus: "الانضباط في الوقت والالتزام بالتعاميم والمهام الإضافية.", reportText: "الالتزام التام بكافة الأنظمة والتعليمات الوزارية، والانضباط في المواعيد الرسمية وأداء المهام الموكلة (إشراف، انتظار) بمسؤولية.", guide: "سجلات الحضور والغياب، تكليفات الإشراف والانتظار، خطابات شكر." },
+    2: { focus: "المشاركة في مجتمعات التعلم المهنية ونقل الأثر للزملاء.", reportText: "شاركت بفاعلية في مجتمعات التعلم المهنية (PLCs) لتحليل نتائج الطلاب في الاختبارات الوطنية (نافس)، والمساهمة في صياغة مقترحات وخطط تدريبية تشاركية ومبادرات مهنية مشتركة لرفع مستوى الأداء المدرسي. كما أسهمت في تطوير الكفايات المهنية ومواكبة المستجدات التربوية ونقل أثر البرامج التدريبية إلى الميدان التعليمي.", guide: "شهادات حضور PLCs والدورات، محاضر اجتماعات التخصص، صور ورش العمل، تقارير المبادرات المهنية المشتركة." },
+    3: { focus: "تفعيل قنوات تواصل فعّالة مع أولياء الأمور.", reportText: "بناءً على مبدأ الشراكة، تم تفعيل قنوات تواصل رقمية لإطلاع أولياء الأمور على المستويات التحصيلية والسلوكية لمعالجة الفجوات وتعزيز نقاط القوة.", guide: "نماذج رسائل، سجلات اجتماعات أو زيارات، تقارير متابعة طلابية مرسلة للأهل." },
+    4: { focus: "تطبيق استراتيجيات تعلم نشط ومشروعات تناسب الفروق الفردية.", reportText: "تم تطبيق نماذج تدريسية حديثة كالتعلم النشط والتعلم القائم على المشروعات بما يتناسب مع الفروق الفردية ورفع دافعية المتعلمين.", guide: "تحاضير دروس توضح الاستراتيجيات، صور/فيديو لتطبيق التعلم النشط، نتاجات مشاريع الطلاب." },
+    5: { focus: "تحسين نواتج التعلم من خلال الخطط العلاجية ومعالجة جوانب الضعف.", reportText: "صممت ونفذت خططاً علاجية فردية وجماعية لمعالجة نقاط الضعف (إهمال الواجبات، ضعف التحصيل)، شملت إجراءات علاجية متنوعة.", guide: "نماذج خطط علاجية، سجلات متابعة، نتائج الطلاب بعد التنفيذ، ومقارنة مستوى الأداء قبل المعالجة وبعدها." },
+    6: { focus: "تحضير منظم، وأهداف واضحة، والتزام بالخطة الزمنية.", reportText: "الالتزام التام بالخطط الدراسية وتوزيع المنهج، مع تصميم سيناريوهات تعليمية متكاملة في منصة مدرستي تحقق الأهداف المعرفية.", guide: "تحاضير منصة مدرستي، جدول توزيع المنهج، سجلات الإنجاز الأسبوعية." },
+    7: { focus: "استخدام أدوات رقمية ومنصات تفاعلية ووسائل تعليمية مناسبة.", reportText: "دمج أدوات الجيل الرابع وتفعيل المختبرات الافتراضية والمنصات التفاعلية لتحويل المعرفة إلى تجربة رقمية تتوافق مع مهارات القرن 21. كما تم توظيف تطبيقات الواقع المعزز والوسائط التفاعلية (Thing Link)، ومنصة Genially للعروض والألعاب التعليمية، وتطبيق Canva لتصميم المحتوى والوسائل البصرية.", guide: "صور/تقارير استخدام الأدوات والمنصات التفاعلية، روابط Thing Link وGenially، تصاميم Canva، ودروس أو أنشطة رقمية منفذة." },
+    8: { focus: "تهيئة بيئة صفية آمنة ومحفزة وداعمة للابتكار ومراعية لاحتياجات المتعلمين.", reportText: "خلق بيئة تعليمية آمنة ومحفزة تدعم الابتكار، من خلال تنظيم المساحات الصفية وتفعيل لوحات التعزيز الرقمية والمادية. كما يمكن الاستفادة من تحليل أنماط التعلم (سمعي، بصري، حركي، قرائي) في تنويع الممارسات ومراعاة احتياجات المتعلمين.", guide: "صور للفصل والزوايا التعليمية ولوحات التعزيز، خطط إدارة الصف، واستبانات أو نتائج تحليل أنماط التعلم عند استخدامها." },
+    9: { focus: "ضبط السلوك الصفي ومتابعة الانضباط والحضور والتأخر.", reportText: "وضعت خطة انضباطية إجرائية لمعالجة السلوكيات الصفية السلبية (النوم، التأخر، تدني المستوى)، باستخدام التقنية والتعزيز.", guide: "الخطة الانضباطية، نماذج متابعة السلوك، سجلات الحضور والتأخر، ونتائج قبل/بعد التطبيق." },
+    10: { focus: "تحليل نتائج الطلاب وتشخيص مستوياتهم وبناء خطط علاجية وإثرائية.", reportText: "تم إجراء تحليل كمي وكيفي لنتائج الاختبارات وبناءً عليه تم تصميم خطط علاجية وإثرائية مما أدى لتحسن نواتج التعلم.", guide: "جداول تحليل، منحنيات بيانية، تصنيف مستويات المتعلمين، وخطط علاجية وإثرائية مرتبطة بالنتائج." },
+    11: { focus: "استخدام تقويم تكويني وختامي بأدوات متنوعة.", reportText: "اعتماد منظومة تقويم شاملة (تكوينية وختامية) باستخدام أدوات متنوعة كملفات الإنجاز وسلالم التقدير لضمان قياس حقيقي للمهارات.", guide: "نماذج اختبارات، سلالم تقدير (Rubrics)، ملفات إنجاز، وأدوات ملاحظة." }
+  };
+  STANDARDS.forEach(function (s) { var d = SOURCE_REPORTS[s.id]; if (d) { s.sourceFocus = d.focus; s.reportText = d.reportText; s.sourceGuide = d.guide; } });
+
+  // عناصر إضافية وردت في التطبيق المستقل وليست معايير أداء رسمية مستقلة.
+  // تحفظ كنصوص مساندة داخل المعيار الموضوعي المناسب ولا تغيّر قائمة المعايير الـ11.
+  var EXTRA_SOURCE_NOTES = [{title:"ترسيخ القيم والتوجهات الإسلامية والوطنية",standard:0,focus:"ترسيخ قيم الوسطية والانتماء الوطني وتعزيز الهوية.",reportText:"تم العمل على ترسيخ قيم الوسطية والانتماء الوطني عبر دمج مضامين الرؤية 2030 في الحصص الدراسية، وتفعيل المناسبات الوطنية لتعزيز الهوية لدى المتعلمين، مما انعكس إيجابياً على سلوك الطلاب داخل الميدان التربوي.",guide:"تقرير تفعيل اليوم الوطني، صور مشاركات الطلاب، محاضر برامج تعزيز القيم الوطنية."}];
+
   // ---------------- ذراع الشواهد: التصنيفات الثمانية ----------------
   var CATEGORIES = [
     { id: "executive-reports", label: "تقارير تنفيذية", icon: "📊", kw: ["تقرير", "تنفيذي", "إنجاز", "أداء", "متابعة", "سير", "نتائج", "إحصائية", "ختامي", "شهري", "أسبوعي", "يومي", "دوري", "تحليلي"] },
@@ -320,6 +341,7 @@
       total += s.weight; if (its.length) got += s.weight;
       rows += "<tr><td>" + s.id + "</td><td>" + esc(s.title) + "</td><td>" + s.weight + "</td><td>" + its.length + "</td><td>" + (its.length ? "موثّق ✔" : "ناقص") + "</td></tr>";
       detail += "<h3>" + s.id + ". " + esc(s.title) + " <small>(" + its.length + " شاهد)</small></h3>";
+      if (s.reportText) detail += "<div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px;margin:6px 0'><b>نص التقرير الجاهز:</b><br>" + esc(s.reportText) + "<br><small><b>دليل الشواهد:</b> " + esc(s.sourceGuide || "") + "</small></div>";
       if (!its.length) detail += "<p class='none'>لا توجد شواهد.</p>";
       else {
         detail += "<ul>";
@@ -343,7 +365,7 @@
       "<h1>ملف إنجاز المعلم/ة</h1><div class='sub'>" + esc([p.name, p.subject, p.school, p.year].filter(Boolean).join(" — ")) + "</div>" +
       "<table><thead><tr><th>م</th><th>المعيار</th><th>الوزن</th><th>عدد الشواهد</th><th>الحالة</th></tr></thead><tbody>" + rows +
       "</tbody></table><p>الأوزان الموثّقة بشواهد: <b>" + got + "</b> من <b>" + total + "</b> — إجمالي الشواهد: <b>" + standardItems().length + "</b></p>" +
-      detail + "<div class='sig'><div>المعلم/ة: " + esc(p.name || "") + "</div><div>مدير/ة المدرسة: " + esc(p.principal || "") + "</div></div></body></html>";
+      detail + "<h2 style='margin-top:22px;border-bottom:2px solid #059669;padding-bottom:5px'>نصوص مساندة من تطبيق المعايير (ليست معايير رسمية مستقلة)</h2>" + EXTRA_SOURCE_NOTES.map(function(n){return "<h3>"+esc(n.title)+"</h3><p>"+esc(n.focus)+"</p><p>"+esc(n.reportText)+"</p><small><b>أمثلة الشواهد:</b> "+esc(n.guide)+"</small>";}).join("") + "<div class='sig'><div>المعلم/ة: " + esc(p.name || "") + "</div><div>مدير/ة المدرسة: " + esc(p.principal || "") + "</div></div></body></html>";
     var w = window.open("", "_blank");
     if (!w) { say("المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.", false); return; }
     w.document.open(); w.document.write(html); w.document.close();
@@ -457,11 +479,12 @@
         '<div style="height:5px;margin:-16px -16px 14px;background:linear-gradient(90deg,#059669,#0d9488)"></div>' +
         '<div class="flex items-start gap-3"><div style="font-size:2rem;line-height:1.2;min-width:40px">' + (icons[s.id] || '📘') + '</div><div class="flex-1 min-w-0">' +
         '<div class="font-extrabold" style="color:#1f2937;line-height:1.6">' + s.id + '. ' + esc(s.title) + '</div>' +
-        '<div class="text-xs mt-1" style="color:#64748b;line-height:1.7">' + esc(s.description || s.examples.join('، ')) + '</div></div>' +
+        '<div class="text-xs mt-1" style="color:#64748b;line-height:1.7">' + esc(s.sourceFocus || s.description || s.examples.join('، ')) + '</div></div>' +
         '<span class="chip" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;white-space:nowrap">' + s.weight + '%</span></div>' +
         '<div class="mt-3 p-3" style="background:#f8fafc;border-radius:10px"><div class="flex justify-between items-center text-xs"><span style="color:#64748b">📎 الشواهد الموثقة</span><b style="color:#059669;font-size:1rem">' + n + '</b></div>' +
         '<div class="mt-2" style="height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden"><div style="height:100%;width:' + pct + '%;border-radius:99px;background:linear-gradient(90deg,' + color + ',#34d399);transition:width .3s"></div></div>' +
         '<div class="flex justify-between mt-1 text-xs" style="color:#94a3b8"><span>المطلوب الاسترشادي: ' + s.required.length + '</span><b style="color:' + color + '">' + pct + '%</b></div></div>' +
+        '<div class="mt-3 p-3" style="background:#f0fdf4;border:1px solid #d1fae5;border-radius:10px;line-height:1.8"><div class="text-xs font-bold mb-1" style="color:#047857">📝 نص التقرير الجاهز</div><div class="text-sm" style="color:#334155">' + esc(s.reportText || 'يمكن كتابة تقرير هذا المعيار هنا بعد توثيق الممارسة.') + '</div><div class="text-xs mt-2" style="color:#64748b"><b>دليل الشواهد المقترح:</b> ' + esc(s.sourceGuide || s.required.join('، ')) + '</div></div>' +
         '<div class="text-xs mt-3" style="color:#64748b;line-height:1.7"><b>أمثلة الشواهد:</b> ' + s.required.map(esc).join('، ') + '</div>' +
         '<div class="flex gap-2 mt-3"><button class="btn btn-brand flex-1 text-xs py-2" onclick="window.PFui.addFor(' + s.id + ')">➕ إضافة شاهد</button>' +
         '<button class="btn btn-outline text-xs py-2 px-3" onclick="window.PFui.tab(this.dataset.tab)" data-tab="report">📄 التقرير</button></div></article>';
