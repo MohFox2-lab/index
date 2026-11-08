@@ -67,12 +67,70 @@
   function ov(o) { return typeof o === "string" ? o : o.value; }
   function ol(o) { return typeof o === "string" ? o : (o.label || o.value); }
   function inpCls() { return "w-full border rounded-xl px-3 py-2 bg-transparent"; }
+  function applyPreparedFields(form) {
+    var P = window.PF_PREPARED;
+    if (!P || !form || form.remKey || form._pfPreparedApplied) return;
+    form._pfPreparedApplied = true;
+    var existing = {};
+    (form.fields || []).forEach(function (fd) { existing[fd.id] = true; });
+    (P.extraFields[form.id] || []).forEach(function (fd) {
+      if (!existing[fd.id]) { form.fields.push(fd); existing[fd.id] = true; }
+    });
+    function choose(fd, options, allowOther) {
+      fd.type = "select";
+      fd.options = options.slice();
+      fd.allowOther = !!allowOther;
+    }
+    (form.fields || []).forEach(function (fd) {
+      if (fd.sec) return;
+      if (fd.id === "subject") choose(fd, P.subjects, true);
+      else if ((fd.id === "grade" || fd.id === "gradeLevel") && fd.type !== "date") choose(fd, P.grades, true);
+      else if (fd.id === "strategyName" || fd.id === "strategy") choose(fd, P.strategies, true);
+      else if (fd.id === "initiativeName" || fd.id === "programName") choose(fd, P.initiatives, true);
+      else if (fd.id === "targetCategory" || fd.id === "targetGroup") choose(fd, P.targetGroups, true);
+      else if (fd.id === "targetCount") choose(fd, P.targetCounts, true);
+      else if (fd.id === "implementationPlace" || fd.id === "implementationLocation") choose(fd, P.locations, true);
+      else if (fd.id === "targetAudience") choose(fd, ["طلاب", "طالبات", "طلاب وطالبات", "معلمون", "معلمات", "أولياء أمور", "المجتمع المدرسي"], true);
+      else if (fd.id === "activityType") {
+        var activityTypes = ["برنامج تعليمي", "نشاط صفي", "نشاط إثرائي", "برنامج علاجي", "نادي علمي", "مسابقة", "إذاعة مدرسية", "زيارة خارجية", "ورشة عمل", "مشروع تعليمي"];
+        (fd.options || []).forEach(function (o) { var x = ov(o); if (activityTypes.indexOf(x) < 0) activityTypes.push(x); });
+        choose(fd, activityTypes, true);
+      } else if (fd.id === "type" && form.id === "classroom-activities") {
+        choose(fd, ["تفاعلي", "تعاوني", "فردي", "جماعي", "عملي", "بحثي", "إثرائي", "علاجي"], true);
+      }
+      var d = P.defaults[form.id] && P.defaults[form.id][fd.id];
+      if ((fd.def === undefined || fd.def === "") && d !== undefined) fd.def = Array.isArray(d) ? d.slice() : d;
+    });
+    if (P.dateFields && P.dateFields[form.id] && !form.dateField) form.dateField = P.dateFields[form.id];
+    if (P.reports[form.id] && !existing.preparedReport) {
+      form.fields.push({ id: "preparedReport", label: "تقرير جاهز قابل للتعديل والطباعة", type: "textarea", span: 2, preparedReport: true });
+    }
+  }
+  function preparedReport(form, values) {
+    var P = window.PF_PREPARED, template = P && P.reports[form.id];
+    if (!template) return "";
+    return template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, function (_, key) {
+      var value = values[key];
+      if (Array.isArray(value)) value = value.filter(Boolean).join("، ");
+      if (value && typeof value === "object") value = value.name || "";
+      return String(value || "يُستكمل");
+    });
+  }
   function fieldHtml(fd, v) {
     var val = v[fd.id], span = fd.span === 2 ? " md:col-span-2" : "", lab = '<label class="text-xs font-bold">' + esc2(fd.label) + "</label>";
     if (fd.sec) return '<div class="md:col-span-2 mt-2 pt-2 font-extrabold" style="border-top:1px dashed var(--line);color:var(--brand-dark)">' + esc2(fd.sec) + "</div>";
     var h = "";
-    if (fd.type === "textarea") h = '<textarea data-f="' + fd.id + '" rows="3" class="' + inpCls() + '">' + esc2(val || "") + "</textarea>";
-    else if (fd.type === "select") h = '<select data-f="' + fd.id + '" class="' + inpCls() + '">' + (fd.req ? "" : '<option value="">— اختر —</option>') + fd.options.map(function (o) { return '<option value="' + attr(ov(o)) + '"' + (val === ov(o) ? " selected" : "") + ">" + esc2(ol(o)) + "</option>"; }).join("") + "</select>";
+    if (fd.type === "textarea") {
+      h = '<textarea data-f="' + fd.id + '" rows="3" class="' + inpCls() + '">' + esc2(val || "") + "</textarea>";
+      if (fd.preparedReport) h += '<div class="text-xs mt-1" style="color:var(--sub)">قالب مقترح؛ راجع وصف التنفيذ والنتائج الفعلية قبل الطباعة.</div><button type="button" class="btn btn-outline text-xs py-1 px-3 mt-1" onclick="window.PFFm.refreshPreparedReport()">🔄 تحديث النص من الحقول</button>';
+    } else if (fd.type === "select") {
+      var isCustom = !!(fd.allowOther && val && !fd.options.some(function (o) { return ov(o) === val; }));
+      h = '<select data-f="' + fd.id + '" class="' + inpCls() + '"' + (fd.allowOther ? ' onchange="window.PFFm.toggleOther(\'' + fd.id + '\',this.value)"' : "") + '>' +
+        (fd.req ? "" : '<option value="">— اختر —</option>') +
+        fd.options.map(function (o) { return '<option value="' + attr(ov(o)) + '"' + (val === ov(o) ? " selected" : "") + ">" + esc2(ol(o)) + "</option>"; }).join("") +
+        (fd.allowOther ? '<option value="__pf_other__"' + (isCustom ? " selected" : "") + '>أخرى — اكتب خيارك</option>' : "") + "</select>";
+      if (fd.allowOther) h += '<input data-other-for="' + fd.id + '" type="text" class="' + inpCls() + ' mt-2"' + (isCustom ? "" : " hidden") + ' value="' + attr(isCustom ? val : "") + '" placeholder="اكتب خيارًا آخر">';
+    }
     else if (fd.type === "list") h = '<textarea data-f="' + fd.id + '" data-t="list" rows="' + Math.max(3, Math.min(8, (val || []).length + 1)) + '" class="' + inpCls() + '" placeholder="عنصر في كل سطر">' + esc2((val || []).join("\n")) + "</textarea>";
     else if (fd.type === "checks") h = '<div class="flex flex-wrap gap-2 mt-1">' + fd.options.map(function (o) { return '<label class="chip" style="cursor:pointer"><input type="checkbox" data-ck="' + fd.id + '" value="' + attr(o) + '"' + ((val || []).indexOf(o) >= 0 ? " checked" : "") + "> " + esc2(o) + "</label>"; }).join("") + "</div>";
     else if (fd.type === "ratings") h = '<div class="grid gap-2 mt-1">' + fd.items.map(function (it, i) { var cur = (val || [])[i] || fd.options[0]; return '<div class="flex items-center gap-2"><span class="text-sm flex-1">' + (i + 1) + ". " + esc2(it) + '</span><select data-rt="' + fd.id + '" data-i="' + i + '" class="border rounded-xl px-2 py-1 bg-transparent">' + fd.options.map(function (o) { return "<option" + (cur === o ? " selected" : "") + ">" + esc2(o) + "</option>"; }).join("") + "</select></div>"; }).join("") + "</div>";
@@ -121,6 +179,7 @@
       F.push({ id: "file", label: "مرفق (صورة أو PDF)", type: "image", span: 2 });
       return F;
     }
+    applyPreparedFields(form);
     return form.fields;
   }
   function collect(form) {
@@ -133,6 +192,7 @@
       else if (t === "ratings") { v[fd.id] = fd.items.map(function (_, i) { var e = document.querySelector('[data-rt="' + fd.id + '"][data-i="' + i + '"]'); return e ? e.value : ""; }); }
       else if (t === "rows" || t === "imp-weeks") { v[fd.id] = [].slice.call(document.querySelectorAll('tr[data-row="' + fd.id + '"]')).map(function (tr) { var o = {}; [].forEach.call(tr.querySelectorAll("[data-c]"), function (i) { o[i.getAttribute("data-c")] = i.value; }); return o; }); }
       else if (t === "students") { v[fd.id] = [].slice.call(document.querySelectorAll('tr[data-stu]')).map(function (tr) { var o = { skillStatuses: [] }; [].forEach.call(tr.querySelectorAll("[data-c]"), function (i) { o[i.getAttribute("data-c")] = i.value; }); [].forEach.call(tr.querySelectorAll("[data-st]"), function (i) { o.skillStatuses[+i.getAttribute("data-st")] = i.value; }); return o; }); }
+      else if (t === "select" && fd.allowOther) { var se = document.querySelector('[data-f="' + fd.id + '"]'), oe = document.querySelector('[data-other-for="' + fd.id + '"]'); v[fd.id] = se && se.value === "__pf_other__" ? (oe ? oe.value.trim() : "") : (se ? se.value : ""); }
       else if (t === "image") { v[fd.id] = (S.vals && S.vals[fd.id]) || null; }
       else if (t === "imp-skills") { /* لا قيمة */ }
       else { var e2 = document.querySelector('[data-f="' + fd.id + '"]'); v[fd.id] = e2 ? e2.value : ""; }
@@ -147,7 +207,7 @@
     var forms = allForms(), cnt = counts(), groups = {}, order = [];
     forms.forEach(function (f) { if (!groups[f.group]) { groups[f.group] = []; order.push(f.group); } groups[f.group].push(f); });
     var nav = order.map(function (g) { return '<div class="mb-3"><div class="font-extrabold text-sm mb-2">' + esc2(g) + '</div><div class="flex flex-wrap gap-2">' + groups[g].map(function (f) { return '<button class="chip ' + (S.formId === f.id ? "active" : "") + '" onclick="window.PFFm.open(\'' + f.id + '\')">' + f.icon + " " + esc2(f.title.replace("خطة علاجية — ", "")) + (cnt[f.id] ? " (" + cnt[f.id] + ")" : "") + "</button>"; }).join("") + "</div></div>"; }).join("");
-    var head = '<div class="card p-4 mb-3"><div class="font-extrabold text-lg">📚 النماذج المتخصصة</div><p class="text-sm mt-1" style="color:var(--sub)">النماذج الكاملة من مشروع ملف الإنجاز الأصلي بكل حقولها، مع الخطط العلاجية لـ' + Object.keys(REM_NAMES).length + " مادة بمهاراتها الجاهزة. كل سجل يُحفظ في Firestore ويُسجَّل تلقائيًا شاهدًا في المعايير المناسبة.</p><button class=\"btn btn-outline text-sm py-2 px-3 mt-2\" onclick=\"window.PFFm.summary()\">🖨️ الملخص الشامل للإنجازات</button> <button class=\"btn btn-outline text-sm py-2 px-3 mt-2\" onclick=\"window.PFFm.smart()\">📥 الرفع الذكي للشواهد</button> <button class=\"btn btn-outline text-sm py-2 px-3 mt-2\" onclick=\"window.PFFm.guide()\">📖 دليل الشواهد المطلوبة (105)</button> <button class=\"btn btn-outline text-sm py-2 px-3 mt-2\" onclick=\"window.PFFm.exportAllExcel()\">📊 تصدير كل شيء Excel (.xlsx)</button></div>";
+    var head = '<div class="card p-4 mb-3"><div class="font-extrabold text-lg">📚 النماذج المتخصصة</div><p class="text-sm mt-1" style="color:var(--sub)">النماذج الكاملة من ملف الإنجاز، مع خطط علاجية لمواد متعددة. أضيفت قوالب تقارير وأهداف وقوائم اقتراحية قابلة للتعديل. كل سجل يُحفظ في Firestore ويُسجَّل تلقائيًا شاهدًا في المعايير المناسبة.</p><p class="text-xs mt-2" style="color:#8a5a00">تنبيه: النصوص والقوائم المقترحة عامة وليست نماذج اعتماد وزاري؛ راجع ما نُفذ فعليًا قبل الطباعة، وأدخل الأعداد والنتائج الحقيقية فقط.</p><button class="btn btn-outline text-sm py-2 px-3 mt-2" onclick="window.PFFm.summary()">🖨️ الملخص الشامل للإنجازات</button> <button class="btn btn-outline text-sm py-2 px-3 mt-2" onclick="window.PFFm.smart()">📥 الرفع الذكي للشواهد</button> <button class="btn btn-outline text-sm py-2 px-3 mt-2" onclick="window.PFFm.guide()">📖 دليل الشواهد المطلوبة (105)</button> <button class="btn btn-outline text-sm py-2 px-3 mt-2" onclick="window.PFFm.exportAllExcel()">📊 تصدير كل شيء Excel (.xlsx)</button></div>';
     var body = "";
     if (S.view === "smart" && !S.formId) body = smartHtml();
     else if (S.view === "guide" && !S.formId) body = guideHtml();
@@ -181,9 +241,9 @@
   }
   function initVals(form) {
     if (form.remKey) return remInit(form);
-    var v = {}; form.fields.forEach(function (fd) {
+    var v = {}; fieldsOf(form).forEach(function (fd) {
       if (fd.sec) return;
-      if (fd.def !== undefined) v[fd.id] = fd.def;
+      if (fd.def !== undefined) v[fd.id] = Array.isArray(fd.def) ? fd.def.slice() : fd.def;
       else if (fd.type === "list") v[fd.id] = (fd.def || []).slice();
       else if (fd.type === "ratings") v[fd.id] = fd.items.map(function () { return fd.options[0]; });
       else if (fd.type === "rows" || fd.type === "imp-weeks" || fd.type === "students") v[fd.id] = fd.type === "rows" ? [{}] : [];
@@ -193,6 +253,7 @@
     });
     var p = PF().profile || {};
     ["school", "teacherName", "name"].forEach(function (k) { if (v[k] === "" && p[k === "teacherName" ? "name" : k]) v[k] = p[k === "teacherName" ? "name" : k]; });
+    if (v.preparedReport !== undefined) v.preparedReport = preparedReport(form, v);
     if (v.skills && form.id === "learning-loss" && !v.studentsData.length) v.studentsData = [{ name: "", skillStatuses: [], proposedPlan: "" }];
     return v;
   }
@@ -498,6 +559,8 @@
       v.masteredPercentage = Math.round(a * 100 / t); v.partiallyMasteredPercentage = Math.round(b * 100 / t); v.notMasteredPercentage = Math.round(c * 100 / t); v.studentCount = (v.studentsData || []).length; S.vals = v; render();
     },
     onRemChange: function () { var form = getForm(S.formId); if (!form || !form.remKey) return; var v = collect(form), old = S.vals || {}; v.skills = old.skills; S.vals = v; },
+    toggleOther: function (id, value) { var el = document.querySelector('[data-other-for="' + id + '"]'); if (!el) return; el.hidden = value !== "__pf_other__"; if (!el.hidden) el.focus(); },
+    refreshPreparedReport: function () { var form = getForm(S.formId); if (!form || !window.PF_PREPARED || !window.PF_PREPARED.reports[form.id]) return; var v = collect(form); v.preparedReport = preparedReport(form, v); S.vals = v; render(); },
     _S: S, _forms: allForms, _collect: collect
   };
 

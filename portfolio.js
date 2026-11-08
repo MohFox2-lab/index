@@ -204,14 +204,15 @@
     if (!confirm("حذف هذا الشاهد نهائيًا؟")) return;
     var d = db(); var it = PF.items.filter(function (x) { return x.id === id; })[0];
     var jobs = [d.collection("portfolio_items").doc(id).delete()];
-    if (it && it.hasFile) jobs.push(d.collection("portfolio_files").doc(id).delete());
+    if (it && it.hasFile && !it.fileRefId) jobs.push(d.collection("portfolio_files").doc(id).delete());
     Promise.all(jobs).then(function () {
       PF.items = PF.items.filter(function (x) { return x.id !== id; }); PF.msg = "تم الحذف."; PF.msgOk = true; draw();
     }).catch(function (e) { console.error(e); say("تعذّر الحذف.", false); });
   }
 
   function openFile(id) {
-    db().collection("portfolio_files").doc(id).get().then(function (s) {
+    var item=PF.items.filter(function(x){return x.id===id;})[0], fileId=item&&item.fileRefId||id;
+    db().collection("portfolio_files").doc(fileId).get().then(function (s) {
       if (!s.exists) { say("الملف غير موجود.", false); return; }
       var f = s.data(), a = document.createElement("a");
       a.href = f.data; a.download = f.name || "evidence"; if (/^image\//.test(f.type) || /pdf/.test(f.type)) a.target = "_blank";
@@ -397,6 +398,81 @@
   function isWorkspaceItem(x) { return !!(x && (x.workspaceType === "portfolio-workspace" || x.workspaceType === "portfolio-form")); }
   function standardItems() { return PF.items.filter(function(x){ return !isWorkspaceItem(x); }); }
   function moduleTitle(id) { var m=WORKSPACE_MODULES.filter(function(x){return x[0]===id;})[0]; return m?m[1]:id; }
+  var WORKSPACE_SUBJECTS = ["العلوم","الرياضيات","اللغة العربية","اللغة الإنجليزية","الدراسات الإسلامية","القرآن الكريم","الاجتماعيات","الفيزياء","الكيمياء","الأحياء","الحاسب وتقنية المعلومات","التربية الفنية","التربية البدنية","المهارات الحياتية","التفكير الناقد"];
+  var WORKSPACE_GRADES = ["رياض الأطفال — المستوى الأول","رياض الأطفال — المستوى الثاني","رياض الأطفال — المستوى الثالث","الأول الابتدائي","الثاني الابتدائي","الثالث الابتدائي","الرابع الابتدائي","الخامس الابتدائي","السادس الابتدائي","الأول المتوسط","الثاني المتوسط","الثالث المتوسط","الأول الثانوي","الثاني الثانوي","الثالث الثانوي"];
+  var WORKSPACE_LINKS = {
+    "experiences":{standards:[1],category:"executive-reports"},
+    "report/16":{standards:[1],category:"executive-reports"},
+    "courses":{standards:[2],category:"certificates-honors"},
+    "certifications":{standards:[2],category:"certificates-honors"},
+    "workshops":{standards:[2],category:"certificates-honors"},
+    "conferences":{standards:[2],category:"certificates-honors"},
+    "readings":{standards:[2],category:"executive-reports"},
+    "lesson-plans":{standards:[6],category:"plans"},
+    "strategies":{standards:[4],category:"activities-worksheets"},
+    "assessments":{standards:[11],category:"tests"},
+    "results":{standards:[10],category:"analysis-assessment"},
+    "activities":{standards:[4,8],category:"activities-worksheets"},
+    "awards":{standards:[5],category:"certificates-honors"},
+    "projects":{standards:[5],category:"initiatives-programs"},
+    "competitions":{standards:[5],category:"initiatives-programs"},
+    "innovations":{standards:[7],category:"initiatives-programs"},
+    "school-activities":{standards:[8],category:"activities-worksheets"},
+    "community-service":{standards:[3,2],category:"initiatives-programs"},
+    "parent-communication":{standards:[3],category:"executive-reports"},
+    "collaboration":{standards:[2],category:"initiatives-programs"},
+    "self-assessment":{standards:[1],category:"analysis-assessment"},
+    "management-assessment":{standards:[1],category:"analysis-assessment"},
+    "program-execution":{standards:[2],category:"initiatives-programs"},
+    "mutual-visits":{standards:[2],category:"executive-reports"},
+    "learning-loss":{standards:[5,10],category:"plans"},
+    "improvement-plan":{standards:[5],category:"plans"},
+    "arabic-remedial":{standards:[5],category:"plans"},
+    "biology-remedial":{standards:[5],category:"plans"},
+    "english-remedial":{standards:[5],category:"plans"},
+    "digital-design-remedial":{standards:[5],category:"plans"},
+    "critical-thinking-remedial":{standards:[5],category:"plans"},
+    "sustainable-development-remedial":{standards:[5],category:"plans"},
+    "islamic-studies-remedial":{standards:[5],category:"plans"},
+    "math-remedial":{standards:[5],category:"plans"},
+    "admin-skills-remedial":{standards:[5],category:"plans"},
+    "functional-writing-remedial":{standards:[5],category:"plans"},
+    "language-competencies-remedial":{standards:[5],category:"plans"},
+    "tafsir-remedial":{standards:[5],category:"plans"},
+    "islamic-studies-toheed-fiqh-remedial":{standards:[5],category:"plans"},
+    "hadith-remedial":{standards:[5],category:"plans"},
+    "earth-space-remedial":{standards:[5],category:"plans"},
+    "science-remedial":{standards:[5],category:"plans"},
+    "physics-remedial":{standards:[5],category:"plans"},
+    "chemistry-remedial":{standards:[5],category:"plans"},
+    "life-skills-remedial":{standards:[5],category:"plans"},
+    "social-studies-remedial":{standards:[5],category:"plans"},
+    "chinese-remedial":{standards:[5],category:"plans"},
+    "physical-education-remedial":{standards:[5],category:"plans"},
+    "digital-skills-remedial":{standards:[5],category:"plans"},
+    "art-education-remedial":{standards:[5],category:"plans"},
+    "tajweed-remedial":{standards:[5],category:"plans"}
+  };
+  function workspaceDefaultText(id) {
+    var meta=WORKSPACE_MODULES.filter(function(m){return m[0]===id;})[0], group=meta?meta[2]:"";
+    if(group==="الخطط العلاجية والإثرائية" || id==="learning-loss" || id==="improvement-plan") return "الهدف: معالجة احتياج تعليمي محدد بناءً على تشخيص موثق.\nالمهارة/الناتج المستهدف: [يُحدد من نتائج المتعلمين].\nالإجراءات: تشخيص، تدريب متدرج، ممارسة، تغذية راجعة، ثم قياس بعدي.\nالنتيجة الفعلية والشاهد: [تُستكمل بعد التنفيذ دون تقدير غير موثق].";
+    if(group==="الأداء التعليمي") return "الهدف: دعم ناتج التعلم المحدد في المادة والصف.\nالإجراء: [يُكتب النشاط أو الاستراتيجية التي نُفذت].\nالمتابعة: توثيق مشاركة المتعلمين ونتيجة التقويم.\nالشاهد والأثر: [تُستكمل من واقع التنفيذ].";
+    if(group==="الإنجازات" || group==="التنفيذ المهني") return "الغرض: توثيق نشاط أو ممارسة مهنية مرتبطة بهدف واضح.\nالفئة المستهدفة: [تُحدد].\nخطوات التنفيذ: تخطيط، تنفيذ، توثيق، ثم مراجعة الأثر.\nالنتائج الفعلية والشاهد: [تُستكمل بعد التنفيذ].";
+    if(group==="المشاركة المجتمعية") return "الغرض: تعزيز التواصل والشراكة مع المجتمع المدرسي.\nقناة التواصل أو النشاط: [تُحدد].\nالإجراء والمتابعة: توثيق ما تم والتاريخ والفئة المشاركة.\nالأثر والشاهد: [يُسجلان استنادًا إلى دليل فعلي].";
+    if(group==="التطوير المهني") return "الغرض: توثيق تعلم أو مشاركة مهنية ذات صلة بالممارسة التعليمية.\nما تم تعلمه أو مشاركته: [يُستكمل].\nتطبيق أو نقل أثر التعلم: [يُوثق عند حدوثه].\nالشاهد: [شهادة أو محضر أو مادة تدريبية].";
+    if(group==="البيانات الأساسية") return "يُستخدم هذا السجل لتوثيق البيانات المهنية أو المؤهلات والخبرات، مع إرفاق الوثائق المناسبة عند الحاجة.";
+    return "الغرض: توثيق ممارسة أو إنجاز مهني.\nالتفاصيل والإجراءات: [تُستكمل].\nالنتيجة والشاهد: [تُسجل بعد التحقق من التنفيذ].";
+  }
+  function workspaceEvidenceDescription(doc) {
+    var fields=WORKSPACE_FIELDS[doc.workspaceModule]||[], extras=[];
+    fields.forEach(function(f){var v=(doc.customData||{})[f.id];if(v==null||v==="")return;if(Array.isArray(v))v=v.join("، ");extras.push(f.label+": "+v);});
+    return [doc.description,extras.join(" | ")].filter(Boolean).join("\n");
+  }
+  function workspacePrintedFields(doc) {
+    var fields=WORKSPACE_FIELDS[doc.workspaceModule]||[], values=[];
+    fields.forEach(function(f){var v=(doc.customData||{})[f.id];if(v==null||v==="")return;if(Array.isArray(v))v=v.join("، ");values.push(f.label+": "+v);});
+    return values.join(" | ");
+  }
   function workspaceItems() { return PF.items.filter(function(x){return isWorkspaceItem(x) && x.workspaceModule===PF.workspaceModule;}).filter(function(x){var q=(PF.workspaceQ||"").trim().toLowerCase();return !q || [x.title,x.description,x.subject,x.grade,x.status].join(" ").toLowerCase().indexOf(q)>=0;}).sort(function(a,b){return (b.date||"").localeCompare(a.date||"");}); }
   // حقول مخصصة مستندة إلى النماذج التي فُحصت في مصدر React الأصلي.
   var WORKSPACE_FIELDS = {
@@ -423,17 +499,17 @@
   function workspaceView() {
     var groups={}; WORKSPACE_MODULES.forEach(function(m){(groups[m[2]]||(groups[m[2]]=[])).push(m);});
     var nav=Object.keys(groups).map(function(g){return '<div class="mb-3"><div class="font-extrabold text-sm mb-2">'+esc(g)+'</div><div class="flex flex-wrap gap-2">'+groups[g].map(function(m){return '<button class="chip '+(PF.workspaceModule===m[0]?'active':'')+'" onclick="window.PFui.workspaceModule(\''+m[0]+'\')">'+esc(m[1])+'</button>';}).join('')+'</div></div>';}).join('');
-    var list=workspaceItems();
+    var list=workspaceItems(), subjectOptions=WORKSPACE_SUBJECTS.map(function(s){return '<option value="'+esc(s)+'"></option>';}).join(''), gradeOptions=WORKSPACE_GRADES.map(function(s){return '<option value="'+esc(s)+'"></option>';}).join('');
     var rows=list.map(function(x){return '<div class="card p-3 mb-2"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="font-bold">'+esc(x.title)+'</div><div class="text-xs mt-1" style="color:var(--sub)">'+esc(x.date||'')+' · '+esc(x.subject||'')+' · '+esc(x.grade||'')+' · '+esc(x.status||'مسودة')+'</div>'+(x.description?'<div class="text-sm mt-2 whitespace-pre-wrap">'+esc(x.description)+'</div>':'')+(x.url?'<a class="chip inline-block mt-2" target="_blank" rel="noopener noreferrer" href="'+esc(x.url)+'">🔗 فتح الرابط</a>':'')+(x.hasFile?'<button class="chip inline-block mt-2" onclick="window.PFui.openFile(\''+x.id+'\')">📎 فتح '+esc(x.fileName||'المرفق')+'</button>':'')+'</div><div class="flex gap-1 shrink-0"><button class="btn btn-outline text-xs py-1 px-2" onclick="window.PFui.workspaceEdit(\''+x.id+'\')">✏️</button><button class="btn btn-outline text-xs py-1 px-2" onclick="window.PFui.workspaceDelete(\''+x.id+'\')">🗑️</button></div></div></div>';}).join('');
     var e=PF.workspaceEditing?PF.items.filter(function(x){return x.id===PF.workspaceEditing && isWorkspaceItem(x);})[0]:null;
     var form='<div class="card p-4 mb-3"><h3 class="font-extrabold mb-3">'+(e?'تعديل سجل':'إضافة سجل إلى: '+esc(moduleTitle(PF.workspaceModule)))+'</h3><div class="grid md:grid-cols-2 gap-3">'+
       '<div><label class="text-xs font-bold">العنوان *</label><input id="pwx-title" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.title:'')+'" maxlength="180"></div>'+
       '<div><label class="text-xs font-bold">التاريخ</label><input id="pwx-date" type="date" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.date:today())+'"></div>'+
-      '<div><label class="text-xs font-bold">المادة</label><input id="pwx-subject" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.subject:'')+'" placeholder="مثال: المهارات الرقمية"></div>'+
-      '<div><label class="text-xs font-bold">الصف/الفئة</label><input id="pwx-grade" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.grade:'')+'" placeholder="اختياري"></div>'+
+      '<div><label class="text-xs font-bold">المادة</label><input id="pwx-subject" list="pwx-subject-options" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.subject:'')+'" placeholder="اختر أو اكتب مادة"><datalist id="pwx-subject-options">'+subjectOptions+'</datalist></div>'+
+      '<div><label class="text-xs font-bold">الصف/الفئة</label><input id="pwx-grade" list="pwx-grade-options" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.grade:'')+'" placeholder="اختر أو اكتب صفًا/فئة"><datalist id="pwx-grade-options">'+gradeOptions+'</datalist></div>'+
       '<div><label class="text-xs font-bold">الحالة</label><select id="pwx-status" class="w-full border rounded-xl px-3 py-2 bg-transparent"><option '+(!e||e.status==='مسودة'?'selected':'')+'>مسودة</option><option '+(e&&e.status==='قيد التنفيذ'?'selected':'')+'>قيد التنفيذ</option><option '+(e&&e.status==='مكتمل'?'selected':'')+'>مكتمل</option><option '+(e&&e.status==='يحتاج متابعة'?'selected':'')+'>يحتاج متابعة</option></select></div>'+
       '<div><label class="text-xs font-bold">رابط ملف أو شاهد</label><input id="pwx-url" type="url" dir="ltr" class="w-full border rounded-xl px-3 py-2 bg-transparent" value="'+esc(e?e.url:'')+'" placeholder="https://"></div>'+
-      '<div class="md:col-span-2"><label class="text-xs font-bold">التفاصيل / الإجراءات / النتائج / ملاحظات المتابعة</label><textarea id="pwx-desc" rows="4" maxlength="12000" class="w-full border rounded-xl px-3 py-2 bg-transparent">'+esc(e?e.description:'')+'</textarea></div><div class="md:col-span-2"><label class="text-xs font-bold">إرفاق ملف فعلي (صورة مضغوطة أو PDF/Word حتى 600KB)</label><input id="pwx-file" type="file" accept="image/*,.pdf,.doc,.docx" class="w-full text-sm">'+(e&&e.hasFile?'<div class="text-xs mt-1">المرفق الحالي: '+esc(e.fileName||'ملف مرفق')+' — حفظ ملف جديد يستبدله.</div>':'')+'</div>'+workspaceCustomFields(PF.workspaceModule,e?e.customData:{})+'</div><div class="flex gap-2 mt-3"><button class="btn btn-brand px-4 py-2" onclick="window.PFui.workspaceSave()">💾 حفظ السجل</button>'+(e?'<button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspaceCancel()">إلغاء التعديل</button>':'')+'<button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspacePrint()">🖨️ تقرير القسم</button><button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspaceExport()">⬇️ تصدير القسم</button></div><p class="text-xs mt-2" style="color:var(--sub)">هذه مساحة سجل موحّد محفوظة في Firestore. النماذج المتخصصة في المصدر الأصلي تحتاج نقلًا واختبارًا منفصلًا قبل اعتبارها مطابقة بالكامل.</p></div>';
+      '<div class="md:col-span-2"><label class="text-xs font-bold">التفاصيل / الإجراءات / النتائج / ملاحظات المتابعة</label><textarea id="pwx-desc" rows="5" maxlength="12000" class="w-full border rounded-xl px-3 py-2 bg-transparent">'+esc(e?e.description:workspaceDefaultText(PF.workspaceModule))+'</textarea></div><div class="md:col-span-2"><label class="text-xs font-bold">إرفاق ملف فعلي (صورة مضغوطة أو PDF/Word حتى 600KB)</label><input id="pwx-file" type="file" accept="image/*,.pdf,.doc,.docx" class="w-full text-sm">'+(e&&e.hasFile?'<div class="text-xs mt-1">المرفق الحالي: '+esc(e.fileName||'ملف مرفق')+' — حفظ ملف جديد يستبدله.</div>':'')+'</div>'+workspaceCustomFields(PF.workspaceModule,e?e.customData:{})+'</div><div class="flex gap-2 mt-3"><button class="btn btn-brand px-4 py-2" onclick="window.PFui.workspaceSave()">💾 حفظ السجل</button>'+(e?'<button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspaceCancel()">إلغاء التعديل</button>':'')+'<button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspacePrint()">🖨️ تقرير القسم</button><button class="btn btn-outline px-4 py-2" onclick="window.PFui.workspaceExport()">⬇️ تصدير القسم</button></div><p class="text-xs mt-2" style="color:var(--sub)">القالب الافتراضي قابل للتحرير؛ لا يُعدّ إثباتًا للتنفيذ. تُرحّل السجلات المرتبطة تلقائيًا إلى الشواهد والمعايير المناسبة.</p></div>';
     return '<div class="card p-4 mb-3"><div class="font-extrabold text-lg">🗂️ مساحة ملف الإنجاز الموسعة</div><p class="text-sm mt-1" style="color:var(--sub)">الأقسام المعروفة من المصدر الأصلي، مع سجلات قابلة للإضافة والتعديل والحذف والبحث والتصدير والطباعة.</p><input class="w-full border rounded-xl px-3 py-2 bg-transparent mt-3" placeholder="🔍 بحث في سجلات القسم" value="'+esc(PF.workspaceQ)+'" oninput="window.PFui.workspaceSearch(this.value)"></div>'+nav+form+'<div class="flex justify-between items-center mb-2"><h3 class="font-extrabold">'+esc(moduleTitle(PF.workspaceModule))+'</h3><span class="chip">'+list.length+' سجل</span></div>'+(rows||'<div class="card p-6 text-center" style="color:var(--sub)">لا توجد سجلات لهذا القسم بعد.</div>');
   }
   function workspaceSave() {
@@ -443,16 +519,26 @@
     var customData={};document.querySelectorAll('[data-ws-field]').forEach(function(el){customData[el.getAttribute('data-ws-field')]=el.value;});
     var fileInput=$("pwx-file"), file=fileInput&&fileInput.files&&fileInput.files[0];
     var btn=document.querySelector('button[onclick="window.PFui.workspaceSave()"]');if(btn)btn.disabled=true;
+    var workspaceSaved=false, savedWorkspaceId=id||null;
     readFileForWorkspace(file).then(function(fd){
       var doc=Object.assign({},existing||{}, {workspaceType:"portfolio-workspace",workspaceModule:PF.workspaceModule,title:title,date:$("pwx-date").value||today(),subject:$("pwx-subject").value.trim(),grade:$("pwx-grade").value.trim(),status:$("pwx-status").value,url:$("pwx-url").value.trim(),description:$("pwx-desc").value.trim(),customData:customData,hasFile:!!(fd||(existing&&existing.hasFile)),fileName:fd?fd.name:(existing?existing.fileName||"":""),fileType:fd?fd.type:(existing?existing.fileType||"":""),createdAt:existing?(existing.createdAt||Date.now()):Date.now(),updatedAt:Date.now()});
       var ref=id?db().collection("portfolio_items").doc(id):db().collection("portfolio_items").doc();
-      return ref.set(doc).then(function(){return fd?db().collection("portfolio_files").doc(ref.id).set({data:fd.data,name:fd.name,type:fd.type}):Promise.resolve();}).then(function(){doc.id=ref.id;if(existing){var idx=PF.items.findIndex(function(x){return x.id===ref.id;});if(idx>=0)PF.items[idx]=doc;}else PF.items.unshift(doc);PF.workspaceEditing=null;say("تم حفظ السجل"+(fd?" والمرفق":"")+" في Firestore.",true);draw();});
-    }).catch(function(e){console.error(e);if(btn)btn.disabled=false;say(e&&e.message?e.message:"تعذّر حفظ السجل أو المرفق. تحقق من الاتصال وقواعد Firestore.",false);});
+      return ref.set(doc).then(function(){workspaceSaved=true;savedWorkspaceId=ref.id;doc.id=ref.id;PF.workspaceEditing=ref.id;var idx=PF.items.findIndex(function(x){return x.id===ref.id;});if(idx>=0)PF.items[idx]=doc;else PF.items.unshift(doc);return fd?db().collection("portfolio_files").doc(ref.id).set({data:fd.data,name:fd.name,type:fd.type}):Promise.resolve();}).then(function(){
+        var link=WORKSPACE_LINKS[doc.workspaceModule],P=window.PFui;
+        if(!link||!P)return Promise.resolve("");
+        var ev={title:doc.title,description:workspaceEvidenceDescription(doc),category:link.category,standards:link.standards.slice(),date:doc.date,url:doc.url||"",hasFile:doc.hasFile,fileName:doc.fileName||"",fileType:doc.fileType||"",fileRefId:doc.hasFile?doc.id:"",sourceModule:doc.workspaceModule};
+        var evp=doc.evidenceId?P.updateEvidence(doc.evidenceId,ev).then(function(){return doc.evidenceId;}):P.addEvidence(ev);
+        return evp.then(function(eid){doc.evidenceId=eid;return ref.set(doc).then(function(){return eid;});});
+      }).then(function(){
+        var ix=PF.items.findIndex(function(x){return x.id===ref.id;});if(ix>=0)PF.items[ix]=doc;
+        PF.workspaceEditing=null;say("تم حفظ السجل"+(fd?" والمرفق":"")+(WORKSPACE_LINKS[doc.workspaceModule]?" وربطه بالشواهد والمعايير المناسبة.":" في ملف الإنجاز."),true);draw();
+      });
+    }).catch(function(e){console.error(e);if(btn)btn.disabled=false;if(workspaceSaved){PF.workspaceEditing=savedWorkspaceId;say("حُفظ السجل، لكن تعذّر إكمال المرفق أو ربط الشاهد. أعد المحاولة من السجل المحفوظ.",false);draw();}else say(e&&e.message?e.message:"تعذّر حفظ السجل. تحقق من الاتصال وقواعد Firestore.",false);});
   }
   function readFileForWorkspace(file){return file?readFile(file):Promise.resolve(null);}
-  function workspaceDelete(id){var x=PF.items.filter(function(a){return a.id===id && isWorkspaceItem(a);})[0];if(!x)return;if(!confirm('حذف السجل «'+x.title+'»؟ لا يمكن التراجع عن الحذف.'))return;Promise.all([db().collection("portfolio_items").doc(id).delete(),x.hasFile?db().collection("portfolio_files").doc(id).delete():Promise.resolve()]).then(function(){PF.items=PF.items.filter(function(a){return a.id!==id;});say("تم حذف السجل والمرفق المرتبط به.",true);draw();}).catch(function(e){console.error(e);say("تعذّر حذف السجل أو مرفقه.",false);});}
+  function workspaceDelete(id){var x=PF.items.filter(function(a){return a.id===id && isWorkspaceItem(a);})[0];if(!x)return;if(!confirm('حذف السجل «'+x.title+'»؟ سيُحذف معه الشاهد المرتبط والمرفق؛ لا يمكن التراجع عن الحذف.'))return;Promise.all([db().collection("portfolio_items").doc(id).delete(),x.hasFile?db().collection("portfolio_files").doc(id).delete():Promise.resolve(),x.evidenceId?removeEvidence(x.evidenceId):Promise.resolve()]).then(function(){PF.items=PF.items.filter(function(a){return a.id!==id&&a.id!==x.evidenceId;});say("تم حذف السجل والشاهد المرتبط والمرفق.",true);draw();}).catch(function(e){console.error(e);say("تعذّر حذف السجل أو الشاهد أو المرفق.",false);});}
   function workspaceExport(){var list=workspaceItems();var blob=new Blob([JSON.stringify({version:1,module:PF.workspaceModule,moduleTitle:moduleTitle(PF.workspaceModule),exportedAt:new Date().toISOString(),items:list},null,2)],{type:"application/json;charset=utf-8"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="سجلات_"+PF.workspaceModule.replace(/[^\w-]/g,"_")+"_"+today()+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href);},1000);}
-  function workspacePrint(){var list=workspaceItems(),p=PF.profile||{};var html="<!doctype html><html lang='ar' dir='rtl'><meta charset='utf-8'><title>"+esc(moduleTitle(PF.workspaceModule))+"</title><style>body{font-family:Tahoma,Arial;padding:24px;line-height:1.8}h1{text-align:center}table{width:100%;border-collapse:collapse}td,th{border:1px solid #aaa;padding:7px;text-align:right;vertical-align:top}th{background:#eee}</style>"+hdr()+"<h1>"+esc(moduleTitle(PF.workspaceModule))+"</h1><p>"+esc([p.name,p.school,p.year].filter(Boolean).join(" — "))+"</p><table><thead><tr><th>العنوان</th><th>التاريخ</th><th>المادة/الصف</th><th>الحالة</th><th>التفاصيل</th><th>الرابط</th></tr></thead><tbody>"+list.map(function(x){return "<tr><td>"+esc(x.title)+"</td><td>"+esc(x.date||"")+"</td><td>"+esc([x.subject,x.grade].filter(Boolean).join(" / "))+"</td><td>"+esc(x.status||"")+"</td><td>"+esc(x.description||"")+"</td><td>"+esc(x.url||"")+"</td></tr>";}).join("")+"</tbody></table><script>window.onload=function(){window.print()}<\/script></html>";var w=window.open("","_blank");if(!w){say("اسمح بالنوافذ المنبثقة للطباعة.",false);return;}w.document.open();w.document.write(html);w.document.close();}
+  function workspacePrint(){var list=workspaceItems(),p=PF.profile||{};var html="<!doctype html><html lang='ar' dir='rtl'><meta charset='utf-8'><title>"+esc(moduleTitle(PF.workspaceModule))+"</title><style>body{font-family:Tahoma,Arial;padding:24px;line-height:1.8}h1{text-align:center}table{width:100%;border-collapse:collapse}td,th{border:1px solid #aaa;padding:7px;text-align:right;vertical-align:top}th{background:#eee}</style>"+hdr()+"<h1>"+esc(moduleTitle(PF.workspaceModule))+"</h1><p>"+esc([p.name,p.school,p.year].filter(Boolean).join(" — "))+"</p><table><thead><tr><th>العنوان</th><th>التاريخ</th><th>المادة/الصف</th><th>الحالة</th><th>التفاصيل والإجراءات والنتائج</th><th>الرابط/المرفق</th></tr></thead><tbody>"+list.map(function(x){var custom=workspacePrintedFields(x);return "<tr><td>"+esc(x.title)+"</td><td>"+esc(x.date||"")+"</td><td>"+esc([x.subject,x.grade].filter(Boolean).join(" / "))+"</td><td>"+esc(x.status||"")+"</td><td>"+esc(x.description||"")+(custom?"<br><small>"+esc(custom)+"</small>":"")+"</td><td>"+esc(x.url||"")+(x.hasFile?"<br><small>مرفق محفوظ: "+esc(x.fileName||"ملف")+"</small>":"")+"</td></tr>";}).join("")+"</tbody></table><script>window.onload=function(){window.print()}<\/script></html>";var w=window.open("","_blank");if(!w){say("اسمح بالنوافذ المنبثقة للطباعة.",false);return;}w.document.open();w.document.write(html);w.document.close();}
 
   // ---------------- الواجهة ----------------
   function counts() {
@@ -589,10 +675,14 @@
   }
   function ensureForms(cb) {
     if (window.PFForms) { cb(); return; }
-    function fail() { var r = $("forms-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل forms.js / forms-catalog.js — تأكد من رفعهما بجانب portfolio.js.</div>'; }
-    var a = document.createElement("script"); a.src = "forms-catalog.js?v=1";
-    a.onload = function () { var b = document.createElement("script"); b.src = "forms.js?v=2"; b.onload = cb; b.onerror = fail; document.body.appendChild(b); };
-    a.onerror = fail; document.body.appendChild(a);
+    function fail() { var r = $("forms-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل prepared-data.js أو forms.js / forms-catalog.js — تأكد من رفع الملفات بجانب portfolio.js.</div>'; }
+    var p = document.createElement("script"); p.src = "prepared-data.js?v=1";
+    p.onload = function () {
+      var a = document.createElement("script"); a.src = "forms-catalog.js?v=2";
+      a.onload = function () { var b = document.createElement("script"); b.src = "forms.js?v=3"; b.onload = cb; b.onerror = fail; document.body.appendChild(b); };
+      a.onerror = fail; document.body.appendChild(a);
+    };
+    p.onerror = fail; document.body.appendChild(p);
   }
 
   // دوال تستخدمها وحدات أخرى (الخطط) لتسجيل شاهد تلقائيًا
@@ -603,7 +693,7 @@
   }
   function updateEvidence(id, patch) {
     var it = PF.items.filter(function (x) { return x.id === id; })[0];
-    if (!it) return addEvidence(patch).then(function () { return id; });
+    if (!it) return addEvidence(patch);
     Object.assign(it, patch, { updatedAt: Date.now() });
     return db().collection("portfolio_items").doc(id).set(it);
   }
