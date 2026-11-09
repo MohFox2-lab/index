@@ -675,11 +675,15 @@
   }
   function ensureForms(cb) {
     if (window.PFForms) { cb(); return; }
-    function fail() { var r = $("forms-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل prepared-data.js أو forms.js / forms-catalog.js — تأكد من رفع الملفات بجانب portfolio.js.</div>'; }
-    var p = document.createElement("script"); p.src = "prepared-data.js?v=1";
+    function fail() { var r = $("forms-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل ملفات النماذج أو القوالب التخصصية — تأكد من رفعها بجانب portfolio.js.</div>'; }
+    var p = document.createElement("script"); p.src = "prepared-data.js?v=21";
     p.onload = function () {
       var a = document.createElement("script"); a.src = "forms-catalog.js?v=2";
-      a.onload = function () { var b = document.createElement("script"); b.src = "forms.js?v=3"; b.onload = cb; b.onerror = fail; document.body.appendChild(b); };
+      a.onload = function () {
+        var t = document.createElement("script"); t.src = "specialized-templates.js?v=21";
+        t.onload = function () { var b = document.createElement("script"); b.src = "forms.js?v=21"; b.onload = cb; b.onerror = fail; document.body.appendChild(b); };
+        t.onerror = fail; document.body.appendChild(t);
+      };
       a.onerror = fail; document.body.appendChild(a);
     };
     p.onerror = fail; document.body.appendChild(p);

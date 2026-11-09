@@ -9,7 +9,13 @@
   var SKILL_COLS = [["targetSkill", "المهارة المستهدفة"], ["deficiencyReason", "سبب القصور"], ["remedialPlan", "الخطة العلاجية"], ["treatmentProcedures", "إجراءات المعالجة"], ["expectedSpeed", "سرعة الاستجابة المتوقعة"], ["impact", "الأثر"]];
   var DEF_WEEKS = { preTestWeek: "الأسبوع الثاني", postTestWeek: "الأسبوع العاشر", treatmentStartWeek: "الأسبوع الثالث", treatmentEndWeek: "الأسبوع التاسع" };
 
-  var S = { root: null, formId: null, editing: null, q: "", msg: "", ok: true, vals: null, busy: false };
+  var S = { root: null, formId: null, editing: null, q: "", msg: "", ok: true, vals: null, busy: false, curriculumKey: "", curriculumIndex: 0 };
+  var CURRICULUM_FORM_IDS = [
+    "classroom-activities", "daily-achievement", "weekly-plan", "weekly-lesson-plan",
+    "teacher-visit", "detailed-remedial", "learning-loss", "improvement-plan",
+    "program-activity", "program-execution", "learning-initiative",
+    "colleague-collaboration", "mutual-visits"
+  ];
 
   function esc2(x) { return (window.esc || function (v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); })(x); }
   function attr(x) { return esc2(x).replace(/"/g, "&quot;"); }
@@ -105,6 +111,16 @@
     if (P.reports[form.id] && !existing.preparedReport) {
       form.fields.push({ id: "preparedReport", label: "تقرير جاهز قابل للتعديل والطباعة", type: "textarea", span: 2, preparedReport: true });
     }
+    if (CURRICULUM_FORM_IDS.indexOf(form.id) >= 0) {
+      [
+        { id: "curriculumGoal", label: "هدف / ناتج تعلم تخصصي مقترح", type: "textarea", span: 2 },
+        { id: "curriculumAction", label: "إجراء أو نشاط تخصصي مقترح", type: "textarea", span: 2 },
+        { id: "curriculumEvidence", label: "شواهد مناسبة للمادة (قابلة للتعديل)", type: "list", def: [], span: 2 },
+        { id: "curriculumReport", label: "قالب التقرير التخصصي (قابل للتحرير)", type: "textarea", span: 2 }
+      ].forEach(function (fd) {
+        if (!existing[fd.id]) { form.fields.push(fd); existing[fd.id] = true; }
+      });
+    }
   }
   function preparedReport(form, values) {
     var P = window.PF_PREPARED, template = P && P.reports[form.id];
@@ -182,6 +198,75 @@
     applyPreparedFields(form);
     return form.fields;
   }
+  function isCurriculumForm(form) {
+    return !!(form && !form.remKey && CURRICULUM_FORM_IDS.indexOf(form.id) >= 0);
+  }
+  function curriculumContext(form, values) {
+    values = values || {};
+    return {
+      subject: values.subject || form.subjName || "",
+      grade: values.grade || values.gradeClass || values.gradeLevel || "",
+      term: values.term || values.semester || ""
+    };
+  }
+  function curriculumGroupsFor(form, values) {
+    var lib = window.PF_SPECIALIZED, context = curriculumContext(form, values);
+    return lib && isCurriculumForm(form) ? lib.groups(context.subject, context.grade, context.term) : [];
+  }
+  function chosenCurriculumGroup(groups) {
+    groups = groups || [];
+    var found = groups.filter(function (g) { return g.key === S.curriculumKey; })[0];
+    if (!found && groups.length) { found = groups[0]; S.curriculumKey = found.key; S.curriculumIndex = 0; }
+    if (!found) { S.curriculumKey = ""; S.curriculumIndex = 0; }
+    return found || null;
+  }
+  function curriculumPanelContent(form, values) {
+    var lib = window.PF_SPECIALIZED, context = curriculumContext(form, values);
+    if (!lib) return '<div class="card p-3 mb-3 text-sm">تعذّر تحميل القوالب التخصصية. تحقق من رفع specialized-templates.js.</div>';
+    var groups = curriculumGroupsFor(form, values), group = chosenCurriculumGroup(groups);
+    var intro = '<div class="font-extrabold">📘 أهداف وشواهد المادة والصف</div><p class="text-xs mt-1 mb-2" style="color:var(--sub)">اختر المادة والصف في حقول النموذج، ثم حدّث الاقتراحات. يمكنك تعديل كل نص قبل الحفظ والطباعة.</p>';
+    if (!context.subject || !context.grade) {
+      return '<div class="card p-3 mb-3" id="pf-curriculum-panel" style="border:1px solid var(--line)">' + intro + '<p class="text-sm mt-2">أكمل حقل المادة والصف في النموذج أدناه، ثم اضغط تحديث.</p><button type="button" class="btn btn-outline text-xs py-1 px-3 mt-2" onclick="window.PFFm.refreshCurriculum()">🔄 تحديث الاقتراحات</button></div>';
+    }
+    if (!group) {
+      return '<div class="card p-3 mb-3" id="pf-curriculum-panel" style="border:1px solid var(--line)">' + intro + '<p class="text-sm mt-2">لا توجد مجموعة بيانات لهذا الاختيار؛ سيُنشأ قالب عام آمن عند التحديث.</p><button type="button" class="btn btn-outline text-xs py-1 px-3 mt-2" onclick="window.PFFm.refreshCurriculum()">🔄 تحديث الاقتراحات</button></div>';
+    }
+    var pairs = group.pairs || [], ix = Math.max(0, Math.min(S.curriculumIndex || 0, pairs.length - 1)), pair = pairs[ix] || {};
+    S.curriculumIndex = ix;
+    var groupSelect = groups.length > 1
+      ? '<label class="text-xs font-bold">الفصل / مجموعة المحتوى</label><select id="pf-curriculum-group" class="' + inpCls() + '" onchange="window.PFFm.pickCurriculumGroup(this.value)">' + groups.map(function (g) { return '<option value="' + attr(g.key) + '"' + (g.key === group.key ? " selected" : "") + '>' + esc2(g.label) + '</option>'; }).join("") + '</select>'
+      : '<div class="text-xs mb-2"><b>المحتوى:</b> ' + esc2(group.label) + '</div>';
+    var goalSelect = pairs.length > 1
+      ? '<label class="text-xs font-bold">ناتج التعلم المقترح</label><select id="pf-curriculum-goal" class="' + inpCls() + '" onchange="window.PFFm.pickCurriculumGoal(this.value)">' + pairs.map(function (p, i) { return '<option value="' + i + '"' + (i === ix ? " selected" : "") + '>' + esc2(p.goal) + '</option>'; }).join("") + '</select>'
+      : "";
+    var notice = group.fallback
+      ? '<div class="text-xs mt-2 p-2 rounded-lg" style="background:#fff7e6;color:#805400">هذا قالب عام أو محتوى عام للمادة، وليس هدفًا موثقًا لهذا الصف. راجع ناتج التعلم في المقرر الحالي قبل استخدامه.</div>'
+      : '<div class="text-xs mt-2" style="color:var(--sub)">مقترح من بنك المهارات المرفق؛ ليس نصًا وزاريًا معتمدًا.</div>';
+    var evidence = lib.evidence(context.subject);
+    return '<div class="card p-3 mb-3" id="pf-curriculum-panel" style="border:1px solid var(--line)">' + intro +
+      '<div class="grid md:grid-cols-2 gap-2 mt-2">' + groupSelect + goalSelect + '</div>' +
+      '<div class="mt-2 p-2 rounded-xl" style="background:rgba(14,164,114,.06)"><div class="text-sm"><b>الهدف:</b> ' + esc2(pair.goal || "") + '</div><div class="text-sm mt-1"><b>الإجراء:</b> ' + esc2(pair.action || "") + '</div><div class="text-xs mt-2"><b>شواهد ممكنة:</b> ' + evidence.map(esc2).join(" · ") + '</div></div>' +
+      notice + '<div class="text-xs mt-1" style="color:var(--sub)">لا تُدرج أسماء المتعلمين أو نتائج غير مقاسة في الشواهد.</div>' +
+      '<button type="button" class="btn btn-brand text-sm py-2 px-3 mt-2" onclick="window.PFFm.applyCurriculum()">⬇️ إدراج الهدف والإجراء والشواهد والتقرير</button> ' +
+      '<button type="button" class="btn btn-outline text-xs py-1 px-3 mt-2" onclick="window.PFFm.refreshCurriculum()">🔄 تحديث من المادة والصف</button></div>';
+  }
+  function refreshCurriculumPanel(form, values) {
+    var panel = $("pf-curriculum-panel");
+    if (panel && form) panel.outerHTML = curriculumPanelContent(form, values || S.vals || {});
+  }
+  function setFieldValue(form, values, id, value) {
+    if (!form.fields.some(function (fd) { return fd.id === id; })) return;
+    values[id] = value;
+    var fd = form.fields.filter(function (x) { return x.id === id; })[0], element = document.querySelector('[data-f="' + id + '"]');
+    if (!element) return;
+    element.value = fd.type === "list" ? (Array.isArray(value) ? value.join("\n") : String(value || "")) : String(value == null ? "" : value);
+  }
+  function addListValue(values, id, value) {
+    if (!Array.isArray(values[id])) return;
+    var next = values[id].filter(function (x) { return String(x || "").trim(); });
+    if (next.indexOf(value) < 0) next.push(value);
+    values[id] = next;
+  }
   function collect(form) {
     var v = {}, F = fieldsOf(form);
     F.forEach(function (fd) {
@@ -227,14 +312,16 @@
   }
   function editorHtml() {
     var form = getForm(S.formId), v = S.vals, F = fieldsOf(form);
-    return '<div class="card p-4 mb-3"><h3 class="font-extrabold mb-3">' + (S.editing === "new" ? "سجل جديد" : "تعديل سجل") + " — " + esc2(form.title) + '</h3><div class="grid md:grid-cols-2 gap-3">' + F.map(function (fd) { return fieldHtml(fd, v); }).join("") + '</div><div class="flex gap-2 mt-4"><button class="btn btn-brand px-5 py-2" ' + (S.busy ? "disabled" : "") + ' onclick="window.PFFm.save()">💾 حفظ</button><button class="btn btn-outline px-5 py-2" onclick="window.PFFm.cancel()">إلغاء</button></div></div>';
+    return '<div class="card p-4 mb-3"><h3 class="font-extrabold mb-3">' + (S.editing === "new" ? "سجل جديد" : "تعديل سجل") + " — " + esc2(form.title) + '</h3>' +
+      (isCurriculumForm(form) ? curriculumPanelContent(form, v) : "") +
+      '<div class="grid md:grid-cols-2 gap-3">' + F.map(function (fd) { return fieldHtml(fd, v); }).join("") + '</div><div class="flex gap-2 mt-4"><button class="btn btn-brand px-5 py-2" ' + (S.busy ? "disabled" : "") + ' onclick="window.PFFm.save()">💾 حفظ</button><button class="btn btn-outline px-5 py-2" onclick="window.PFFm.cancel()">إلغاء</button></div></div>';
   }
 
   // ---------------- العمليات ----------------
   function ensureData(form, cb) {
     var need = [];
     if (form.remKey && !window.REMEDIAL_DATA) need.push("remedial-data.js?v=1");
-    if (form.id === "improvement-plan" && !window.SUBJECT_SKILLS) need.push("subject-skills-data.js?v=1");
+    if ((form.id === "improvement-plan" || isCurriculumForm(form)) && !window.SUBJECT_SKILLS) need.push("subject-skills-data.js?v=21");
     if (!need.length) { cb(); return; }
     var n = need.length, ok = true;
     need.forEach(function (src) { loadScript(src, function (r) { ok = ok && r; if (--n === 0) { if (!ok) { S.msg = "تعذّر تحميل ملف البيانات — تأكد من رفع remedial-data.js و subject-skills-data.js بجانب portfolio.js."; S.ok = false; } cb(); } }); });
@@ -272,7 +359,18 @@
     return ((form.titlePrefix || "") + parts.join(" — ")).trim() || form.title;
   }
   function summaryOf(form, v) {
-    return fieldsOf(form).filter(function (fd) { return !fd.sec && /^(text|textarea|date|number|select)$/.test(fd.type) && v[fd.id]; }).slice(0, 6).map(function (fd) { return fd.label + ": " + v[fd.id]; }).join(" | ").slice(0, 600);
+    var fields = fieldsOf(form).filter(function (fd) { return !fd.sec && v[fd.id] && fd.type !== "image" && fd.type !== "imp-skills"; });
+    var priority = ["subject", "grade", "gradeClass", "curriculumGoal", "curriculumAction", "curriculumEvidence", "curriculumReport"];
+    fields.sort(function (a, b) {
+      var ai = priority.indexOf(a.id), bi = priority.indexOf(b.id);
+      return (ai < 0 ? 100 : ai) - (bi < 0 ? 100 : bi);
+    });
+    return fields.map(function (fd) {
+      var value = v[fd.id];
+      if (Array.isArray(value)) value = value.filter(Boolean).join("، ");
+      if (value && typeof value === "object") return "";
+      return value ? fd.label + ": " + value : "";
+    }).filter(Boolean).join(" | ").slice(0, 1200);
   }
   function save() {
     var form = getForm(S.formId); if (!form || S.busy) return;
@@ -509,7 +607,7 @@
 
   // ---------------- واجهة عامة ----------------
   window.PFFm = {
-    open: function (id) { S.view = null; var f = getForm(id) || { id: id, remKey: /^rem:/.test(id) ? id.slice(4) : null }; S.formId = id; S.editing = null; S.q = ""; S.msg = ""; S.vals = null; ensureData(f, render); render(); },
+    open: function (id) { S.view = null; var f = getForm(id) || { id: id, remKey: /^rem:/.test(id) ? id.slice(4) : null }; S.formId = id; S.editing = null; S.q = ""; S.msg = ""; S.vals = null; S.curriculumKey = ""; S.curriculumIndex = 0; ensureData(f, render); render(); },
     add: function () { var f = getForm(S.formId); ensureData(f, function () { S.vals = initVals(f); S.editing = "new"; S.msg = ""; render(); }); },
     edit: function (id) { var r = PF().items.filter(function (x) { return x.id === id; })[0], f = getForm(S.formId); if (!r) return; ensureData(f, function () { S.vals = JSON.parse(JSON.stringify(r.data || {})); S.editing = id; S.msg = ""; render(); }); },
     cancel: function () { S.editing = null; S.vals = null; render(); },
@@ -550,6 +648,41 @@
       var form = getForm(S.formId), v = collect(form), SK = window.SUBJECT_SKILLS, sub = $("imp-sub").value, gr = $("imp-gr").value, n = Math.max(1, parseInt($("imp-n").value, 10) || 3), pairs = ((SK[sub] || {})[gr] || []).slice(0, n);
       v.goals = pairs.map(function (p) { return p[0]; }); v.actions = pairs.map(function (p) { return p[1]; }); if (!v.subject) v.subject = sub; if (!v.grade) v.grade = gr; S.vals = v; S.impSub = sub; S.impGr = gr; render();
     },
+    refreshCurriculum: function () {
+      var form = getForm(S.formId); if (!isCurriculumForm(form)) return;
+      S.vals = collect(form); S.curriculumKey = ""; S.curriculumIndex = 0;
+      refreshCurriculumPanel(form, S.vals);
+    },
+    pickCurriculumGroup: function (key) {
+      var form = getForm(S.formId); if (!isCurriculumForm(form)) return;
+      S.vals = collect(form); S.curriculumKey = key; S.curriculumIndex = 0;
+      refreshCurriculumPanel(form, S.vals);
+    },
+    pickCurriculumGoal: function (index) {
+      var form = getForm(S.formId); if (!isCurriculumForm(form)) return;
+      S.curriculumIndex = Math.max(0, parseInt(index, 10) || 0);
+      refreshCurriculumPanel(form, collect(form));
+    },
+    applyCurriculum: function () {
+      var form = getForm(S.formId), lib = window.PF_SPECIALIZED;
+      if (!isCurriculumForm(form) || !lib) return;
+      var values = collect(form), context = curriculumContext(form, values), groups = curriculumGroupsFor(form, values), group = groups.filter(function (g) { return g.key === S.curriculumKey; })[0] || groups[0];
+      if (!group || !group.pairs || !group.pairs.length) { S.msg = "لا توجد أهداف مقترحة لهذا الاختيار. حدّث الاقتراحات أو راجع مقرر المادة."; S.ok = false; render(); return; }
+      var pair = group.pairs[Math.max(0, Math.min(S.curriculumIndex || 0, group.pairs.length - 1))] || group.pairs[0];
+      var evidence = lib.evidence(context.subject);
+      setFieldValue(form, values, "curriculumGoal", pair.goal);
+      setFieldValue(form, values, "curriculumAction", pair.action);
+      setFieldValue(form, values, "curriculumEvidence", evidence);
+      setFieldValue(form, values, "curriculumReport", lib.report({
+        subject: context.subject, grade: context.grade, goal: pair.goal, action: pair.action, evidence: evidence
+      }));
+      addListValue(values, "goals", pair.goal);
+      addListValue(values, "actions", pair.action);
+      S.vals = values; S.msg = "أُدرج الهدف والإجراء والشواهد والقالب. راجعها وعدّلها قبل الحفظ."; S.ok = true;
+      refreshCurriculumPanel(form, values);
+      var msg = S.root && S.root.querySelector(".card.p-3.mb-3.text-sm.font-bold");
+      if (msg) msg.outerHTML = msgHtml();
+    },
     addStudent: function () { var form = getForm(S.formId), v = collect(form); v.studentsData.push({ name: "", skillStatuses: [], proposedPlan: "" }); S.vals = v; render(); },
     refreshStudents: function () { var form = getForm(S.formId); S.vals = collect(form); S.vals.skills = S.vals.skills || []; render(); },
     calcPct: function () {
@@ -567,13 +700,27 @@
   // تغيير المرحلة/الصف/الفصل في الخطط العلاجية (تفويض أحداث)
   document.addEventListener("change", function (ev) {
     var t = ev.target; if (!S.root || !S.root.contains(t) || !S.editing) return;
-    var form = getForm(S.formId); if (!form || !form.remKey) return;
-    var id = t.getAttribute("data-f"); if (id !== "stage" && id !== "grade" && id !== "semester") return;
+    var form = getForm(S.formId); if (!form) return;
+    var id = t.getAttribute("data-f");
+    if (isCurriculumForm(form) && /^(subject|grade|gradeLevel|gradeClass|term|semester)$/.test(id || "")) {
+      S.vals = collect(form); S.curriculumKey = ""; S.curriculumIndex = 0;
+      refreshCurriculumPanel(form, S.vals); return;
+    }
+    if (!form.remKey) return;
+    if (id !== "stage" && id !== "grade" && id !== "semester") return;
     var RD = window.REMEDIAL_DATA, sub = RD.subjects[form.remKey], v = collect(form), prev = S.vals || {};
     v.skills = prev.skills; v.file = prev.file;
     if (id === "stage") { v.grade = (remGrades(sub, v) || [])[0] || ""; }
     if (!sub.stages) v.stage = stageOf(v.grade);
     v.skills = remDefaultSkills(form, v); S.vals = v; render();
+  });
+  document.addEventListener("input", function (ev) {
+    var t = ev.target, field = t && t.getAttribute("data-other-for");
+    if (!field || !S.root || !S.root.contains(t) || !S.editing) return;
+    var form = getForm(S.formId);
+    if (!isCurriculumForm(form) || !/^(subject|grade|gradeLevel|gradeClass)$/.test(field)) return;
+    S.vals = collect(form); S.curriculumKey = ""; S.curriculumIndex = 0;
+    refreshCurriculumPanel(form, S.vals);
   });
 
   window.PFForms = { mount: function (root) { S.root = root; render(); }, render: render };
