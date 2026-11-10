@@ -7,7 +7,10 @@
   window.PF_LOGO = LOGO; window.PF_HEADER_CSS = CSS;
   window.PF_HEADER = function (i) {
     i = i || {};
+    var logo = typeof i.logo === "string" && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(i.logo) ? i.logo : LOGO;
+    var safeLogo = logo.replace(/["'<>\\]/g, "");
+    var css = CSS.replace(LOGO, safeLogo);
     function ln(l, v) { return "<div><b>" + l + "</b> <span>" + (e(v) || "______") + "</span></div>"; }
-    return "<style>" + CSS + "</style><div class='pfh'><div class='r'>" + ln("المنطقة:", i.region) + ln("المدرسة:", i.school) + ln("المعلم/ة:", i.name) + "</div><div class='c'><div class='k1'>المملكة العربية السعودية</div><div class='k2'>وزارة التعليم</div><div class='k3'><b>إعداد:</b> ( منصة منهاج العلوم )</div></div><div class='l'></div></div><div class='pfhl'></div>";
+    return "<style>" + css + "</style><div class='pfh'><div class='r'>" + ln("المنطقة:", i.region) + ln("المدرسة:", i.school) + ln("المعلم/ة:", i.name) + "</div><div class='c'><div class='k1'>المملكة العربية السعودية</div><div class='k2'>وزارة التعليم</div><div class='k3'><b>إعداد:</b> ( منصة منهاج العلوم )</div></div><div class='l'></div></div><div class='pfhl'></div>";
   };
 })();

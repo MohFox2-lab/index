@@ -77,7 +77,7 @@
 
   var MAX_FILE = 600 * 1024;   // حد الملف المخزّن داخل قاعدة البيانات (الصور تُضغط تلقائيًا)
 
-  var PF = { items: [], profile: {}, cv: {}, tab: "overview", fStd: 0, fCat: "", q: "", editing: null, loaded: false, loading: false, msg: "", msgOk: true, workspaceModule: "evidence-arm", workspaceEditing: null, workspaceQ: "" };
+  var PF = { items: [], profile: {}, cv: {}, tab: "overview", reportStd: 0, fStd: 0, fCat: "", q: "", editing: null, loaded: false, loading: false, msg: "", msgOk: true, workspaceModule: "evidence-arm", workspaceEditing: null, workspaceQ: "" };
 
   function catOf(id) { for (var i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i].id === id) return CATEGORIES[i]; return null; }
   function stdOf(id) { for (var i = 0; i < STANDARDS.length; i++) if (STANDARDS[i].id === id) return STANDARDS[i]; return null; }
@@ -122,6 +122,14 @@
       PF.items = r[0].docs.map(function (x) { var o = x.data(); o.id = x.id; return o; })
         .sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
       PF.profile = r[1].exists ? r[1].data() : {};
+      // Migrate old identity values in memory until the teacher saves the CV once.
+      // After that, intentionally cleared fields stay cleared instead of reappearing.
+      if (PF.cv.identityStoredInCv !== true) {
+        ["name", "subject", "school", "region", "year", "principal"].forEach(function (k) {
+          if (!PF.cv[k] && PF.profile[k]) PF.cv[k] = PF.profile[k];
+        });
+        if (!PF.cv.logoData) PF.cv.logoData = PF.profile.logoData || PF.profile.logo || "";
+      }
       PF.loaded = true; PF.loading = false;
     }).catch(function (e) {
       console.error(e); PF.loading = false;
@@ -237,7 +245,13 @@
 
   function collectCV() {
     var cv = { experiences: [], courses: [], certs: [] };
+    cv.identityStoredInCv = PF.cv.identityStoredInCv === true;
     CVFIELDS.forEach(function (f) { var el = $("cv-" + f[0]); cv[f[0]] = el ? el.value.trim() : (PF.cv[f[0]] || ""); });
+    ["school", "region", "year", "principal"].forEach(function (k) {
+      var el = $("cv-report-" + k);
+      cv[k] = el ? el.value.trim() : (PF.cv[k] || (PF.cv.identityStoredInCv ? "" : (PF.profile || {})[k] || ""));
+    });
+    cv.logoData = PF.cv.logoData || (PF.cv.identityStoredInCv ? "" : (PF.profile || {}).logoData || (PF.profile || {}).logo || "");
     ["skills", "hobbies"].forEach(function (k) { var el = $("cv-" + k); cv[k] = el ? el.value.trim() : (PF.cv[k] || ""); });
     Object.keys(CVROWS).forEach(function (g) {
       var n = (PF.cv[g] || []).length;
@@ -254,6 +268,7 @@
   function cvDel(g, i) { PF.cv = collectCV(); PF.cv[g].splice(i, 1); draw(); }
   function saveCV() {
     var cv = collectCV();
+    cv.identityStoredInCv = true;
     ["experiences", "courses", "certs"].forEach(function (g) { cv[g] = cv[g].filter(function (r) { return Object.keys(r).some(function (k) { return r[k]; }); }); });
     var hours = cv.courses.reduce(function (a, r) { return a + (Number(r.hours) || 0); }, 0);
     var ev = { title: "السيرة الذاتية والدورات التدريبية", description: "عدد الدورات " + cv.courses.length + " — إجمالي الساعات " + hours + " — الشهادات المهنية " + cv.certs.length,
@@ -261,9 +276,48 @@
     var p = cv.evidenceId ? updateEvidence(cv.evidenceId, ev).then(function () { return cv.evidenceId; }) : addEvidence(ev);
     p.then(function (eid) {
       cv.evidenceId = eid; cv.updatedAt = Date.now();
-      return db().collection("portfolio_meta").doc("cv").set(cv).then(function () { PF.cv = cv; PF.msg = "✅ تم حفظ السيرة الذاتية وتسجيلها شاهدًا (المعيار 2)."; PF.msgOk = true; draw(); });
+      return db().collection("portfolio_meta").doc("cv").set(cv).then(function () { PF.cv = cv; PF.msg = "تم حفظ السيرة الذاتية والبيانات الأساسية."; PF.msgOk = true; draw(); });
     }).catch(function (e) { console.error(e); say("تعذّر الحفظ.", false); });
   }
+  function compressLogo(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error("اختر ملف صورة صالحًا للشعار.")); return; }
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error("تعذرت قراءة الصورة.")); };
+      reader.onload = function () {
+        var image = new Image();
+        image.onerror = function () { reject(new Error("تعذر فتح الصورة.")); };
+        image.onload = function () {
+          var scale = Math.min(1, 520 / Math.max(image.width, image.height));
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+          var quality = 0.78, data = canvas.toDataURL("image/jpeg", quality);
+          while (data.length > 180000 && quality > 0.32) { quality -= 0.08; data = canvas.toDataURL("image/jpeg", quality); }
+          if (data.length > 190000) {
+            canvas.width = Math.round(canvas.width * 0.72); canvas.height = Math.round(canvas.height * 0.72);
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            data = canvas.toDataURL("image/jpeg", 0.45);
+          }
+          if (data.length > 220000) { reject(new Error("حجم الشعار بعد الضغط كبير؛ اختر صورة أصغر.")); return; }
+          resolve(data);
+        };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function uploadLogo(input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var selected = input.files[0];
+    compressLogo(selected).then(function (data) {
+      PF.cv = collectCV(); PF.cv.logoData = data;
+      draw();
+      say("تم تجهيز الشعار للمعاينة. احفظ البيانات لتثبيته.", true);
+    }).catch(function (e) { say(e.message || "تعذر تجهيز الشعار.", false); });
+  }
+  function removeLogo() { PF.cv = collectCV(); PF.cv.logoData = ""; draw(); say("أزيل الشعار من المعاينة. احفظ البيانات لتأكيد الإزالة.", true); }
   function printCV() {
     var cv = collectCV(), li = function (a) { return a.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join(""); };
     var lines = function (t) { return li(String(t || "").split("\n").filter(function (x) { return x.trim(); })); };
@@ -291,8 +345,15 @@
   }
   function viewCV() {
     var cv = PF.cv || {}, inp = 'class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)"';
-    var head = '<div class="card p-4 mb-3"><h2 class="font-extrabold mb-3">👤 البيانات الشخصية</h2><div class="grid md:grid-cols-2 gap-3">' +
-      CVFIELDS.map(function (f) { return '<div><label class="text-xs font-bold">' + f[1] + '</label><input id="cv-' + f[0] + '" ' + inp + ' value="' + esc(cv[f[0]] || (f[0] === "name" ? (PF.profile || {}).name || "" : "")) + '"></div>'; }).join("") + "</div></div>";
+    var head = '<div class="card p-4 mb-3"><h2 class="font-extrabold mb-3">البيانات الشخصية</h2><div class="grid md:grid-cols-2 gap-3">' +
+      CVFIELDS.map(function (f) { var legacyValue = cv.identityStoredInCv ? "" : (PF.profile || {})[f[0]] || ""; return '<div><label class="text-xs font-bold">' + f[1] + '</label><input id="cv-' + f[0] + '" ' + inp + ' value="' + esc(cv[f[0]] || legacyValue) + '"></div>'; }).join("") + "</div></div>";
+    var reportFields = [["school","المدرسة"],["region","المنطقة التعليمية"],["year","العام الدراسي"],["principal","مدير/ة المدرسة"]];
+    var identity = '<div class="card p-4 mb-3" style="border-color:#a7d8cb"><h2 class="font-extrabold mb-1">بيانات تقارير المعايير</h2><p class="text-xs mb-3" style="color:var(--sub)">يُستخدم الاسم والمادة من البيانات الشخصية أعلاه، وتُحفظ بقية البيانات مرة واحدة لاستخدامها تلقائيًا في تقارير المعايير الـ11.</p><div class="grid md:grid-cols-2 gap-3">' +
+      reportFields.map(function (f) {
+        var value = cv[f[0]] || (cv.identityStoredInCv ? "" : (PF.profile || {})[f[0]] || "");
+        return '<div><label class="text-xs font-bold">' + f[1] + '</label><input id="cv-report-' + f[0] + '" ' + inp + ' value="' + esc(value) + '"></div>';
+      }).join("") + '</div><div class="mt-4 flex items-center gap-3 flex-wrap"><div><div class="text-xs font-bold mb-1">شعار الوزارة (اختياري)</div><input id="cv-report-logo" type="file" accept="image/*" class="text-xs" onchange="window.PFui.logoUpload(this)"><div class="text-xs mt-1" style="color:var(--sub)">يُضغط تلقائيًا ويحفظ داخل بيانات السيرة الذاتية.</div></div>' +
+      (cv.logoData ? '<div class="flex items-center gap-2"><img src="' + cv.logoData + '" alt="معاينة الشعار" style="width:92px;height:62px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px"><button class="btn btn-outline text-xs py-1 px-2" onclick="window.PFui.logoRemove()">إزالة الشعار</button></div>' : '<div class="text-xs" style="color:var(--sub)">لا يوجد شعار مرفوع.</div>') + '</div></div>';
     var titles = { experiences: "💼 الخبرات التعليمية", courses: "🎓 الدورات التدريبية", certs: "📜 الشهادات المهنية" };
     var groups = Object.keys(CVROWS).map(function (g) {
       var rows = (cv[g] || []).map(function (r, i) {
@@ -305,7 +366,7 @@
     }).join("");
     var extra = '<div class="card p-4 mb-3"><div class="grid md:grid-cols-2 gap-3"><div><label class="text-xs font-bold">المهارات (كل مهارة في سطر)</label><textarea id="cv-skills" rows="4" ' + inp + ">" + esc(cv.skills || "") + "</textarea></div>" +
       '<div><label class="text-xs font-bold">الهوايات (كل هواية في سطر)</label><textarea id="cv-hobbies" rows="4" ' + inp + ">" + esc(cv.hobbies || "") + "</textarea></div></div></div>";
-    return head + groups + extra + '<div class="flex gap-2"><button class="btn btn-brand flex-1 py-2.5" onclick="window.PFui.cvSave()">💾 حفظ السيرة الذاتية</button><button class="btn btn-outline py-2.5 px-4" onclick="window.PFui.cvPrint()">🖨️ طباعة</button></div>';
+    return head + identity + groups + extra + '<div class="flex gap-2"><button class="btn btn-brand flex-1 py-2.5" onclick="window.PFui.cvSave()">حفظ البيانات والسيرة الذاتية</button><button class="btn btn-outline py-2.5 px-4" onclick="window.PFui.cvPrint()">طباعة السيرة</button></div>';
   }
 
   // ---------------- النسخ الاحتياطي ----------------
@@ -335,14 +396,13 @@
 
   // ---------------- التقرير القابل للطباعة ----------------
   function printReport(withImages) {
-    var p = PF.profile || {}, rows = "", detail = "";
+    var p = reportProfile(), rows = "", detail = "";
     var total = 0, got = 0;
     STANDARDS.forEach(function (s) {
       var its = standardItems().filter(function (x) { return (x.standards || []).indexOf(s.id) >= 0; });
       total += s.weight; if (its.length) got += s.weight;
       rows += "<tr><td>" + s.id + "</td><td>" + esc(s.title) + "</td><td>" + s.weight + "</td><td>" + its.length + "</td><td>" + (its.length ? "موثّق ✔" : "ناقص") + "</td></tr>";
       detail += "<h3>" + s.id + ". " + esc(s.title) + " <small>(" + its.length + " شاهد)</small></h3>";
-      if (s.reportText) detail += "<div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px;margin:6px 0'><b>نص التقرير الجاهز:</b><br>" + esc(s.reportText) + "<br><small><b>دليل الشواهد:</b> " + esc(s.sourceGuide || "") + "</small></div>";
       if (!its.length) detail += "<p class='none'>لا توجد شواهد.</p>";
       else {
         detail += "<ul>";
@@ -379,6 +439,48 @@
         (x.standards || []).forEach(function (sid) { var host = w.document.getElementById("img-" + x.id + "-" + sid); if (host) host.innerHTML = "<img src='" + s.data().data + "'>"; });
       });
     })).then(finish).catch(finish);
+  }
+
+  function reportProfile() {
+    var cv = PF.cv || {}, legacy = PF.profile || {}, p = {};
+    ["name", "subject", "school", "region", "year", "principal"].forEach(function (k) {
+      p[k] = cv[k] || (cv.identityStoredInCv ? "" : legacy[k] || "");
+    });
+    p.logoData = cv.logoData || (cv.identityStoredInCv ? "" : legacy.logoData || legacy.logo || "");
+    return p;
+  }
+  function standardEvidence(stdId) {
+    return standardItems().filter(function (x) { return (x.standards || []).indexOf(stdId) >= 0; });
+  }
+  function standardReportMarkup(std, items) {
+    var p = reportProfile();
+    var evidence = items.length ? "<ol class='report-list'>" + items.map(function (x) {
+      var cat = catOf(x.category);
+      return "<li><b>" + esc(x.title || "شاهد") + "</b>" +
+        "<div class='meta'>" + esc([cat && cat.label, x.date].filter(Boolean).join(" · ")) + "</div>" +
+        (x.description ? "<p>" + esc(x.description) + "</p>" : "") +
+        (x.url ? "<div class='url' dir='ltr'>" + esc(x.url) + "</div>" : "") +
+        (x.hasFile ? "<div class='meta'>ملف مرفق: " + esc(x.fileName || "ملف محفوظ") + "</div>" : "") + "</li>";
+    }).join("") + "</ol>" : "<p class='empty'>لا توجد شواهد موثقة لهذا المعيار حتى الآن.</p>";
+    return "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><title>تقرير المعيار " + std.id + "</title><style>" +
+      "@page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#23312e;font-size:11.5pt;line-height:1.75;margin:0;background:#fff}" +
+      ".page{max-width:190mm;margin:0 auto}.rule{height:3px;background:#13866c;margin:0 0 7mm}.title{text-align:center;color:#146f5c;font-size:17pt;margin:4mm 0 1mm}.subtitle{text-align:center;color:#667570;font-size:10pt;margin:0 0 6mm}" +
+      ".metadata{display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;padding:4mm;background:#f3f8f6;border:1px solid #d6e7e1;border-radius:3mm;margin-bottom:6mm}.metadata div{border-bottom:1px solid #dce8e4;padding:1mm 0}.metadata b{color:#60716b;font-size:9pt}.criterion{background:#eaf6f1;border-right:4px solid #13866c;padding:4mm 5mm;margin:5mm 0}.criterion h2{font-size:13pt;margin:0 0 1mm;color:#145d50}.focus{color:#52635d;font-size:10pt}.narrative{padding:4mm 5mm;margin:4mm 0 6mm;border:1px solid #dce8e4;border-radius:2mm;text-align:justify;min-height:22mm}.section-title{font-size:12pt;color:#146f5c;border-bottom:1px solid #bfd9d0;padding-bottom:1mm;margin:5mm 0 2mm}.count{color:#146f5c;font-weight:bold}.report-list{padding-right:6mm;margin:0}.report-list li{padding:2mm 1mm;border-bottom:1px solid #e7eeeb;break-inside:avoid}.report-list p{margin:1mm 0}.meta{font-size:9pt;color:#70817b}.url{font-size:9pt;color:#52635d;overflow-wrap:anywhere}.empty{color:#718079;text-align:center;padding:5mm;border:1px dashed #cbd8d3;border-radius:2mm}.signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin-top:12mm;break-inside:avoid}.sig{min-height:31mm;border:1px dashed #aebdb7;border-radius:2mm;text-align:center;padding:3mm}.sig b{display:block;margin-bottom:7mm;color:#30453e}.sig .line{font-size:9pt;color:#77847f;margin-top:2mm}.footer{border-top:1px solid #dce5e1;margin-top:7mm;padding-top:2mm;color:#77847f;text-align:center;font-size:9pt}" +
+      "@media screen{body{background:#edf3f0;padding:18px}.page{background:white;padding:12mm;box-shadow:0 8px 28px #23312e18;border-radius:4px}}@media print{.page{max-width:none} .metadata,.criterion{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><main class='page'>" +
+      hdr() + "<h1 class='title'>تقرير أداء المعلم/ة — المعيار " + std.id + "</h1><p class='subtitle'>العام الدراسي: " + esc(p.year || "________________") + "</p>" +
+      "<section class='metadata'><div><b>المعلم/ة</b><br>" + esc(p.name || "________________") + "</div><div><b>المادة</b><br>" + esc(p.subject || "________________") + "</div><div><b>المدرسة</b><br>" + esc(p.school || "________________") + "</div><div><b>المنطقة</b><br>" + esc(p.region || "________________") + "</div><div><b>مدير/ة المدرسة</b><br>" + esc(p.principal || "________________") + "</div><div><b>تاريخ التقرير</b><br>" + esc(today()) + "</div></section>" +
+      "<section class='criterion'><h2>المعيار " + std.id + ": " + esc(std.title) + "</h2><div class='focus'>" + esc(std.sourceFocus || "") + "</div></section>" +
+      "<h2 class='section-title'>نص التقرير</h2><div class='narrative'>" + esc(std.reportText || "") + "</div>" +
+      "<h2 class='section-title'>الشواهد المرفقة <span class='count'>(" + items.length + ")</span></h2>" + evidence +
+      "<section class='signatures'><div class='sig'><b>المعلم/ة المُقيّم/ة</b><div class='line'>التوقيع: __________________</div><div class='line'>التاريخ: __________________</div></div><div class='sig'><b>مدير/ة المدرسة</b><div class='line'>التوقيع: __________________</div><div class='line'>التاريخ: __________________</div></div><div class='sig'><b>المشرف/ة التربوي/ة</b><div class='line'>التوقيع: __________________</div><div class='line'>التاريخ: __________________</div></div></section>" +
+      "<div class='footer'>منصة منهاج العلوم — تقرير خاص بالمعيار " + std.id + " من معايير الأداء الوظيفي الـ11</div></main></body></html>";
+  }
+  function printStandardReport(id) {
+    var std = stdOf(id); if (!std) return;
+    var win = window.open("", "_blank");
+    if (!win) { say("اسمح بالنوافذ المنبثقة لطباعة التقرير.", false); return; }
+    win.document.open(); win.document.write(standardReportMarkup(std, standardEvidence(id))); win.document.close();
+    setTimeout(function () { try { win.focus(); win.print(); } catch (e) {} }, 450);
   }
 
   // ---------------- مساحة ملف الإنجاز الموسعة: أقسام المصدر الأصلي ----------------
@@ -567,13 +669,13 @@
         '<div class="font-extrabold" style="color:#1f2937;line-height:1.6">' + s.id + '. ' + esc(s.title) + '</div>' +
         '<div class="text-xs mt-1" style="color:#64748b;line-height:1.7">' + esc(s.sourceFocus || s.description || s.examples.join('، ')) + '</div></div>' +
         '<span class="chip" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;white-space:nowrap">' + s.weight + '%</span></div>' +
-        '<div class="mt-3 p-3" style="background:#f8fafc;border-radius:10px"><div class="flex justify-between items-center text-xs"><span style="color:#64748b">📎 الشواهد الموثقة</span><b style="color:#059669;font-size:1rem">' + n + '</b></div>' +
+        '<div class="mt-3 p-3" style="background:#f8fafc;border-radius:10px"><div class="flex justify-between items-center text-xs"><span style="color:#64748b">الشواهد الموثقة</span><b style="color:#059669;font-size:1rem">' + n + '</b></div>' +
         '<div class="mt-2" style="height:9px;border-radius:99px;background:#e5e7eb;overflow:hidden"><div style="height:100%;width:' + pct + '%;border-radius:99px;background:linear-gradient(90deg,' + color + ',#34d399);transition:width .3s"></div></div>' +
         '<div class="flex justify-between mt-1 text-xs" style="color:#94a3b8"><span>المطلوب الاسترشادي: ' + s.required.length + '</span><b style="color:' + color + '">' + pct + '%</b></div></div>' +
-        '<div class="mt-3 p-3" style="background:#f0fdf4;border:1px solid #d1fae5;border-radius:10px;line-height:1.8"><div class="text-xs font-bold mb-1" style="color:#047857">📝 نص التقرير الجاهز</div><div class="text-sm" style="color:#334155">' + esc(s.reportText || 'يمكن كتابة تقرير هذا المعيار هنا بعد توثيق الممارسة.') + '</div><div class="text-xs mt-2" style="color:#64748b"><b>دليل الشواهد المقترح:</b> ' + esc(s.sourceGuide || s.required.join('، ')) + '</div></div>' +
-        '<div class="text-xs mt-3" style="color:#64748b;line-height:1.7"><b>أمثلة الشواهد:</b> ' + s.required.map(esc).join('، ') + '</div>' +
+        '<div class="mt-3 p-3" style="background:#f0f8f5;border:1px solid #d1e9df;border-radius:10px;line-height:1.8"><div class="text-xs font-bold mb-1" style="color:#14745d">التركيز</div><div class="text-sm" style="color:#334155">' + esc(s.sourceFocus || s.examples.join('، ')) + '</div></div>' +
+        '<div class="text-xs mt-3" style="color:#64748b;line-height:1.7"><b>الشواهد المقترحة:</b> ' + s.required.map(esc).join('، ') + '</div>' +
         '<div class="flex gap-2 mt-3"><button class="btn btn-brand flex-1 text-xs py-2" onclick="window.PFui.addFor(' + s.id + ')">➕ إضافة شاهد</button>' +
-        '<button class="btn btn-outline text-xs py-2 px-3" onclick="window.PFui.tab(this.dataset.tab)" data-tab="report">📄 التقرير</button></div></article>';
+        '<button class="btn btn-outline text-xs py-2 px-3" onclick="window.PFui.openStandardReport(' + s.id + ')">عرض التقرير</button></div></article>';
     }).join('');
     return '<section class="mb-4" style="background:linear-gradient(135deg,#f8fafc 0%,#d1fae5 55%,#ccfbf1 100%);border:1px solid #d1fae5;border-radius:18px;padding:18px">' +
       '<div class="flex items-center justify-between flex-wrap gap-3"><div><div class="text-xl font-black" style="color:#1f2937">🛡️ لوحة متابعة معايير الأداء الوظيفي</div>' +
@@ -586,6 +688,26 @@
       stat('الأوزان المغطاة', weighted + '%', '⭐', 'مؤشر تغطية الأوزان وليس درجة تقييم') +
       '</div><div class="flex items-center justify-between flex-wrap gap-2 mb-3"><h3 class="font-extrabold" style="color:#1f2937">📚 بطاقات المعايير</h3><span class="text-xs" style="color:#64748b">اختر إضافة شاهد أو افتح التقرير</span></div>' +
       '<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">' + cards + '</div>';
+  }
+
+  function viewStandardReport() {
+    var std = stdOf(PF.reportStd), items = std ? standardEvidence(std.id) : [];
+    if (!std) return '<div class="card p-5">المعيار غير متاح. <button class="btn btn-outline" onclick="window.PFui.tab(&quot;overview&quot;)">العودة للمعايير</button></div>';
+    var p = reportProfile();
+    var evidence = items.length ? items.map(function (x) {
+      var cat = catOf(x.category);
+      return '<li class="py-2" style="border-bottom:1px solid #e5eee9"><b>' + esc(x.title) + '</b><div class="text-xs mt-1" style="color:var(--sub)">' +
+        esc([cat && cat.label, x.date].filter(Boolean).join(' · ')) + '</div>' + (x.description ? '<div class="text-sm mt-1">' + esc(x.description) + '</div>' : '') +
+        (x.hasFile ? '<div class="text-xs mt-1" style="color:var(--sub)">ملف مرفق: ' + esc(x.fileName || 'ملف محفوظ') + '</div>' : '') + '</li>';
+    }).join('') : '<li class="text-sm py-4 text-center" style="color:var(--sub)">لا توجد شواهد موثقة لهذا المعيار بعد.</li>';
+    return '<div class="flex items-center justify-between gap-2 mb-3"><button class="btn btn-outline py-2 px-3" onclick="window.PFui.tab(&quot;overview&quot;)">العودة للمعايير</button><button class="btn btn-brand py-2 px-4" onclick="window.PFui.printStandardReport(' + std.id + ')">طباعة تقرير المعيار</button></div>' +
+      '<article class="card p-4 md:p-6" style="max-width:850px;margin:auto;background:#fff">' + hdr() +
+      '<div class="text-center pb-3 mb-4" style="border-bottom:1px solid #dce8e2"><div class="font-extrabold text-lg" style="color:#14745d">تقرير المعيار ' + std.id + '</div><div class="text-xs mt-1" style="color:var(--sub)">تقرير خاص بهذا المعيار من معايير الأداء الوظيفي</div></div>' +
+      '<div class="grid sm:grid-cols-3 gap-2 p-3 rounded-xl text-sm" style="background:#f3f8f6"><div><b>المادة:</b> ' + esc(p.subject || '—') + '</div><div><b>العام الدراسي:</b> ' + esc(p.year || '—') + '</div><div><b>مدير/ة المدرسة:</b> ' + esc(p.principal || '—') + '</div></div>' +
+      '<section class="mt-4 p-4 rounded-xl" style="background:#eaf6f1;border-right:4px solid #14846a"><h2 class="font-extrabold">' + std.id + '. ' + esc(std.title) + '</h2><p class="text-sm mt-1" style="color:#52635d">' + esc(std.sourceFocus || '') + '</p></section>' +
+      '<h3 class="font-bold mt-4 mb-2">نص التقرير</h3><p class="p-4 rounded-xl text-sm leading-8" style="background:#f7faf8;border:1px solid #dce8e2">' + esc(std.reportText || '') + '</p>' +
+      '<h3 class="font-bold mt-4 mb-2">الشواهد المرفقة <span style="color:#14846a">(' + items.length + ')</span></h3><ol class="pr-5">' + evidence + '</ol>' +
+      '<div class="grid sm:grid-cols-3 gap-3 mt-6 text-center text-sm">' + ["المعلم/ة المُقيّم/ة", "مدير/ة المدرسة", "المشرف/ة التربوي/ة"].map(function (name) { return '<div class="p-3 rounded-xl" style="border:1px dashed #aebdb7;min-height:105px"><b>' + name + '</b><div class="mt-5 text-xs" style="color:var(--sub)">التوقيع: __________</div><div class="mt-2 text-xs" style="color:var(--sub)">التاريخ: __________</div></div>'; }).join('') + '</div></article>';
   }
 
   function viewEvidence() {
@@ -643,13 +765,9 @@
 
   function viewReport() {
     return '<div class="card p-4 mb-3"><h2 class="font-extrabold mb-1">🖨️ التقرير</h2>' +
-      '<p class="text-sm mb-3" style="color:var(--sub)">تقرير مطبوع (A4) بالمعايير الـ 11 وعدد الشواهد لكل معيار وقائمتها، وتوقيع المعلم/ة والمدير/ة.</p>' +
+      '<p class="text-sm mb-3" style="color:var(--sub)">ملخص مطبوع (A4) لتغطية المعايير الـ11 وعدد الشواهد المرتبطة بكل معيار.</p>' +
       '<div class="flex gap-2 flex-wrap"><button class="btn btn-brand py-2 px-4" onclick="window.PFui.print(false)">🖨️ طباعة التقرير</button>' +
-      '<button class="btn btn-outline py-2 px-4" onclick="window.PFui.print(true)">🖼️ طباعة مع الصور المرفقة</button></div></div>' +
-      '<div class="card p-4 mb-3"><h2 class="font-extrabold mb-2">👤 بيانات المعلم/ة (تظهر في التقرير)</h2><div class="grid md:grid-cols-2 gap-3">' +
-      [["name", "اسم المعلم/ة"], ["subject", "المادة"], ["school", "المدرسة"], ["year", "العام الدراسي"], ["principal", "مدير/ة المدرسة"]].map(function (f) {
-        return '<div><label class="text-xs font-bold">' + f[1] + '</label><input id="pf-p-' + f[0] + '" class="w-full border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)" value="' + esc((PF.profile || {})[f[0]] || "") + '"></div>';
-      }).join("") + '</div><button class="btn btn-brand mt-3 py-2 px-4" onclick="window.PFui.saveProfile()">💾 حفظ البيانات</button></div>' +
+      '<button class="btn btn-outline py-2 px-4" onclick="window.PFui.print(true)">🖼️ طباعة الملخص مع الصور المرفقة</button></div><div class="text-xs mt-3" style="color:var(--sub)">تُدار بيانات التقرير وشعار الوزارة من تبويب السيرة الذاتية.</div></div>' +
       '<div class="card p-4"><h2 class="font-extrabold mb-1">💾 نسخة احتياطية</h2><p class="text-xs mb-2" style="color:var(--sub)">تحفظ بيانات الشواهد (بدون الملفات المرفقة) في ملف JSON.</p>' +
       '<div class="flex gap-2 flex-wrap"><button class="btn btn-outline py-2 px-4" onclick="window.PFui.exportJson()">⬇️ تصدير</button>' +
       '<label class="btn btn-outline py-2 px-4" style="cursor:pointer">⬆️ استيراد<input type="file" accept=".json" class="hidden" style="display:none" onchange="window.PFui.importJson(this.files[0])"></label></div></div>';
@@ -666,7 +784,12 @@
 
   // ترويسة موحّدة لكل المطبوعات (header.js)
   (function () { if (!window.PF_HEADER) { var h = document.createElement("script"); h.src = "header.js?v=1"; document.head.appendChild(h); } })();
-  function hdr() { var p = PF.profile || {}; return window.PF_HEADER ? window.PF_HEADER({ name: p.name, school: p.school, region: p.region || "" }) : ""; }
+  function hdr() {
+    var p = reportProfile();
+    if (window.PF_HEADER) return window.PF_HEADER({ name: p.name, school: p.school, region: p.region, logo: p.logoData });
+    var logo = /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(p.logoData || "") ? p.logoData : "";
+    return "<div style='display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #13866c;padding:12px 4px;margin-bottom:14px;font-family:Tahoma,Arial,sans-serif'><div>المنطقة: " + esc(p.region || "________") + "<br>المدرسة: " + esc(p.school || "________") + "<br>المعلم/ة: " + esc(p.name || "________") + "</div><div style='text-align:center;color:#14745d;font-weight:bold;font-size:18px'>المملكة العربية السعودية<br><span style='color:#47534f;font-size:14px'>وزارة التعليم</span><br><span style='font-size:12px'>إعداد: منصة منهاج العلوم</span></div>" + (logo ? "<img alt='شعار وزارة التعليم' src='" + esc(logo) + "' style='width:90px;height:60px;object-fit:contain'>" : "<div style='width:90px'></div>") + "</div>";
+  }
   function ensureStd11(cb) {
     if (window.Std11) { cb(); return; }
     var a = document.createElement("script"); a.src = "std11.js?v=2"; a.onload = cb;
@@ -711,7 +834,7 @@
     if (!isAdmin()) { drawLogin(); return; }
     if (!PF.loaded) { app.innerHTML = '<div class="card p-8 text-center mt-10">جارٍ تحميل ملف الإنجاز…</div>'; if (!PF.loading) load().then(draw); return; }
     var tabs = [["overview", "🏠 المعايير"], ["evidence", "📎 الشواهد"], ["plans", "🩹 الخطط العلاجية والإثرائية"], ["cv", "👤 السيرة الذاتية"], ["form", "➕ إضافة شاهد"], ["report", "🖨️ التقرير"], ["file11", "🏆 ملف إنجاز الأداء الوظيفي"], ["record", "📑 سجل توثيق الشواهد"], ["ready", "🧾 شواهد جاهزة"], ["forms", "📚 النماذج المتخصصة"], ["workspace", "🗂️ أقسام الملف الموسعة"]];
-    var body = PF.tab === "overview" ? viewOverview() : PF.tab === "evidence" ? viewEvidence() : PF.tab === "plans" ? '<div id="plans-root"><div class="card p-6 text-center">جارٍ تحميل الخطط…</div></div>' : PF.tab === "cv" ? viewCV() : PF.tab === "form" ? viewForm(preStdForm) : (PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready") ? '<div id="std11-root"><div class="card p-6 text-center">جارٍ التحميل…</div></div>' : PF.tab === "forms" ? '<div id="forms-root"><div class="card p-6 text-center">جارٍ تحميل النماذج…</div></div>' : PF.tab === "workspace" ? workspaceView() : viewReport();
+    var body = PF.tab === "overview" ? viewOverview() : PF.tab === "standard-report" ? viewStandardReport() : PF.tab === "evidence" ? viewEvidence() : PF.tab === "plans" ? '<div id="plans-root"><div class="card p-6 text-center">جارٍ تحميل الخطط…</div></div>' : PF.tab === "cv" ? viewCV() : PF.tab === "form" ? viewForm(preStdForm) : (PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready") ? '<div id="std11-root"><div class="card p-6 text-center">جارٍ التحميل…</div></div>' : PF.tab === "forms" ? '<div id="forms-root"><div class="card p-6 text-center">جارٍ تحميل النماذج…</div></div>' : PF.tab === "workspace" ? workspaceView() : viewReport();
     app.innerHTML = '<div class="fade-in ' + (PF.tab === "forms" || PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready" ? "max-w-5xl" : "max-w-3xl") + ' mx-auto"><div class="flex items-center justify-between mb-3 mt-2"><h1 class="font-extrabold text-xl">📁 ملف إنجاز المعلم/ة</h1>' +
       '<div class="flex gap-2"><button onclick="state.screen=\'admin\';render()" class="btn btn-outline text-sm py-2 px-3">⚙️ الإعدادات</button>' +
       '<button onclick="state.screen=\'setup\';render()" class="btn btn-outline text-sm py-2 px-3">رجوع</button></div></div>' +
@@ -745,6 +868,8 @@
 
   window.PFui = {
     tab: function (t) { PF.tab = t; if (t !== "form") PF.editing = null; preStdForm = 0; draw(); },
+    openStandardReport: function (id) { PF.reportStd = Number(id) || 0; PF.tab = "standard-report"; draw(); },
+    printStandardReport: printStandardReport,
     workspaceModule: function(id){PF.workspaceModule=id;PF.workspaceEditing=null;PF.workspaceQ="";draw();},
     workspaceSearch: function(q){PF.workspaceQ=q;var pos=q.length;draw();var i=document.querySelector('input[placeholder="🔍 بحث في سجلات القسم"]');if(i){i.focus();i.setSelectionRange(pos,pos);}},
     workspaceEdit: function(id){PF.workspaceEditing=id;draw();},
@@ -766,7 +891,7 @@
       if (s.category && $("pf-cat") && !$("pf-cat").value) $("pf-cat").value = s.category;
       s.standards.forEach(function (id) { var c = $("pf-s" + id); if (c) c.checked = true; });
     },
-    cvRow: cvRow, cvDel: cvDel, cvSave: saveCV, cvPrint: printCV,
+    cvRow: cvRow, cvDel: cvDel, cvSave: saveCV, cvPrint: printCV, logoUpload: uploadLogo, logoRemove: removeLogo,
     addEvidence: addEvidence, updateEvidence: updateEvidence, removeEvidence: removeEvidence,
     // للاختبار فقط
     _state: PF, _suggest: suggest, _counts: counts
