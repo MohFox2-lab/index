@@ -1,6 +1,6 @@
 // خدمة العمل دون إنترنت: تخزّن الملفات عند أول زيارة، وتحدّثها في الخلفية عند كل زيارة.
-const V = 'manhaj-v44';
-const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './portfolio.js?v=23', './plans.js?v=9', './prepared-data.js?v=21', './forms-catalog.js?v=3', './subject-skills-data.js?v=21', './specialized-templates.js?v=21', './forms.js?v=21', './std11.js?v=3', './header.js?v=1'];
+const V = 'manhaj-v50';
+const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './portfolio.js?v=25', './plans.js?v=9', './prepared-data.js?v=21', './forms-catalog.js?v=3', './subject-skills-data.js?v=21', './specialized-templates.js?v=21', './forms.js?v=21', './std11.js?v=3', './header.js?v=1'];
 const EXT = ['cdn.tailwindcss.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -22,7 +22,7 @@ self.addEventListener('fetch', e => {
     }).catch(() => caches.match(r, {ignoreSearch: true}).then(hit => hit || caches.match('./index.html'))));
     return;
   }
-  e.respondWith(caches.match(r, {ignoreSearch: same}).then(hit => {
+  e.respondWith(caches.match(r).then(hit => {
     const net = fetch(r).then(res => {
       if (res && (res.ok || res.type === 'opaque')) { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); }
       return res;
