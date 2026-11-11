@@ -42,6 +42,20 @@
   .chip{border-radius:9999px; padding:.4rem 1rem; font-size:.85rem; font-weight:700; cursor:pointer; transition:.15s; border:1.5px solid var(--line); background:var(--card); color:var(--ink);}
   .chip.active{background:var(--brand); border-color:var(--brand); color:#fff;}
   .chip:hover{transform:translateY(-1px);}
+  .hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .hub-card{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:right;padding:16px;border-radius:18px;background:var(--card);border:1.5px solid var(--line);border-right:5px solid var(--brand);cursor:pointer;transition:.18s;box-shadow:0 2px 8px rgba(15,23,42,.05)}
+  .hub-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(14,164,114,.18);border-color:var(--brand)}
+  .hub-ic{font-size:1.8rem}.hub-t{font-weight:900;font-size:1.02rem;color:var(--ink)}.hub-d{font-size:.78rem;color:var(--sub)}
+  .section-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:#fff;box-shadow:0 6px 18px rgba(8,122,85,.25)}
+  .sec-back,.sec-close{flex-shrink:0;border-radius:12px;padding:.45rem .9rem;font-weight:800;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.35)}
+  .sec-back:hover,.sec-close:hover{background:rgba(255,255,255,.3)}
+  .crumbs{font-size:.72rem;opacity:.85;display:flex;gap:4px;align-items:center}.crumb-link{color:#fff;text-decoration:underline;cursor:pointer;background:none;border:0;padding:0}.crumb-sep{opacity:.7}
+  .sec-title{font-weight:900;font-size:1.1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .subtabs{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:8px 10px}
+  .subtabs-lbl{font-size:.72rem;font-weight:800;color:var(--sub);margin-bottom:6px}
+  .subchip{border-radius:8px;padding:.25rem .7rem;font-size:.78rem;font-weight:600;cursor:pointer;background:transparent;color:var(--sub);border:1px solid transparent;border-bottom:2px solid var(--line)}
+  .subchip:hover{color:var(--ink);background:var(--bg)}
+  .subchip.active{color:var(--brand-dark);border-bottom-color:var(--brand);background:rgba(14,164,114,.08)}
   .type-card{border:2px solid var(--line); border-radius:1rem; padding:.9rem; cursor:pointer; transition:.15s; background:var(--card);}
   .type-card.active{border-color:var(--brand); background:rgba(14,164,114,.12);}
   .btn{border-radius:1rem; padding:.7rem 1.3rem; font-weight:800; transition:.15s; }
@@ -528,8 +542,56 @@ const TEACHER_SITE_CONFIG = {
   messagingSenderId: "275504808566",
   appId: "1:275504808566:web:16d3951b587e2727c9d557"
 };
+
+// ===== تعدد المعلمين: كل معلم/ة له مساحة بيانات مستقلة =====
+function manhajTenantFromUrl(){
+  try{
+    var p = new URLSearchParams(location.search).get('t');
+    if(p !== null){ localStorage.setItem('manhaj_tenant', p === 'main' ? '' : p); }
+    return localStorage.getItem('manhaj_tenant') || '';
+  }catch(e){ return ''; }
+}
+function manhajScopedDb(raw, tid){
+  if(!raw || !tid) return raw;
+  return new Proxy(raw, { get: function(t, k){
+    if(k === 'collection') return function(n){ return t.collection('tdata').doc(tid).collection(n); };
+    var v = t[k]; return typeof v === 'function' ? v.bind(t) : v;
+  }});
+}
+function manhajWithTenant(url, tid){ if(!tid) return url; return url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + encodeURIComponent(tid); }
 let _teacherDb = null;
-function getTeacherDb(){
+let TEACHER_OK = '';
+function currentTenant(){
+  const u = window.firebase && firebase.auth && firebase.auth().currentUser;
+  if(u && u.email === ADMIN_EMAIL) return '';
+  if(u && TEACHER_OK && TEACHER_OK === u.uid) return u.uid;
+  return manhajTenantFromUrl();
+}
+function getRawDb(){
+  if(_teacherDb) return _teacherDb;
+  if(!window.firebase || !firebase.firestore) return null;
+  try{
+    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(TEACHER_SITE_CONFIG);
+    _teacherDb = firebase.firestore();
+    return _teacherDb;
+  }catch(e){ console.error(e); return null; }
+}
+function getTeacherDb(){ return manhajScopedDb(getRawDb(), currentTenant()); }
+function isTeacherAuthorized(){
+  const u = window.firebase && firebase.auth && firebase.auth().currentUser;
+  return !!(u && (u.email === ADMIN_EMAIL || (TEACHER_OK && TEACHER_OK === u.uid)));
+}
+async function verifyTeacher(user){
+  TEACHER_OK = '';
+  if(!user) return false;
+  if(user.email === ADMIN_EMAIL) return true;
+  try{
+    const s = await getRawDb().collection('teachers').doc(String(user.email||'').toLowerCase()).get();
+    if(s.exists && s.data().active !== false && s.data().uid === user.uid){ TEACHER_OK = user.uid; return true; }
+  }catch(e){ console.warn('verifyTeacher', e); }
+  return false;
+}
+function _unusedOldGetTeacherDb(){
   if(_teacherDb) return _teacherDb;
   if(!window.firebase || !firebase.firestore) return null;
   try{
@@ -540,7 +602,8 @@ function getTeacherDb(){
 }
 
 // ============================= تسليم المهمة (الأداء المهامي) وإشعار الأولياء =============================
-const PARENT_PORTAL_URL = 'https://mohfox2-lab.github.io/teacher7/parents.html';
+const PARENT_PORTAL_BASE = 'https://mohfox2-lab.github.io/teacher7/parents.html';
+const PARENT_PORTAL_URL = manhajWithTenant(PARENT_PORTAL_BASE, manhajTenantFromUrl());
 const TASK_CACHE_KEY = 'manhaj_task_cfg_v1';
 let TASK_CONFIG = { title: '' };
 function loadCachedTask(){ try{ const r = localStorage.getItem(TASK_CACHE_KEY); if(r) TASK_CONFIG = Object.assign({title:''}, JSON.parse(r)); }catch(e){} }
@@ -763,20 +826,22 @@ function adminLogin(){
   errEl.style.display = 'none';
   const db = getTeacherDb();
   if(!db){ errEl.textContent = 'تعذّر الاتصال بالخدمة. تأكد من الإنترنت.'; errEl.style.display='block'; return; }
-  firebase.auth().signInWithEmailAndPassword(email, pass).then(cred => {
-    if(cred.user.email !== ADMIN_EMAIL){
+  firebase.auth().signInWithEmailAndPassword(email, pass).then(async cred => {
+    const ok = await verifyTeacher(cred.user);
+    if(!ok){
       firebase.auth().signOut();
-      errEl.textContent = 'هذا الحساب غير مخوّل بالدخول هنا.';
+      errEl.textContent = 'هذا البريد غير مفعّل أو موقوف. تواصل مع مدير التطبيق للحصول على رمز الدخول.';
       errEl.style.display = 'block';
       return;
     }
+    fetchRemoteConfigSilently();
     render();
   }).catch(err => {
-    errEl.textContent = 'البريد أو كلمة السر غير صحيحة.';
+    errEl.textContent = 'البريد أو رمز الدخول غير صحيح.';
     errEl.style.display = 'block';
   });
 }
-function adminLogout(){ firebase.auth().signOut().then(render); }
+function adminLogout(){ TEACHER_OK = ''; firebase.auth().signOut().then(render); }
 
 function adminToggleTopic(i, mode){
   const key = mode === 'exam' ? 'examDisabledTopics' : 'practiceDisabledTopics';
@@ -866,7 +931,7 @@ function renderPortfolioShell(){
 function renderAdmin(){
   const db = getTeacherDb();
   const user = (window.firebase && firebase.auth && firebase.auth().currentUser) || null;
-  const isAdmin = user && user.email === ADMIN_EMAIL;
+  const isAdmin = isTeacherAuthorized();
 
   if(!isAdmin){
     app.innerHTML = `
@@ -877,7 +942,7 @@ function renderAdmin(){
         <div class="grid gap-2 text-right">
           <input id="admin-email" type="email" placeholder="البريد الإلكتروني"
             class="w-full border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)">
-          <input id="admin-pass" type="password" placeholder="كلمة السر"
+          <input id="admin-pass" type="password" placeholder="رمز الدخول (أرسله لك مدير التطبيق)"
             class="w-full border rounded-xl px-3 py-2 bg-transparent" style="border-color:var(--line)">
         </div>
         <div id="admin-login-err" class="text-xs mt-2" style="color:#e11d48;display:none"></div>
@@ -2371,7 +2436,7 @@ loadCachedTask();
 applyMonthlyPlanDefaultIfFresh();
 fetchRemoteConfigSilently();
 if(window.firebase && firebase.auth){
-  firebase.auth().onAuthStateChanged(() => { if(state.screen === 'admin' || state.screen === 'portfolio') render(); });
+  firebase.auth().onAuthStateChanged(async (u) => { await verifyTeacher(u); fetchRemoteConfigSilently(); if(state.screen === 'admin' || state.screen === 'portfolio') render(); });
 }
 state.studentName = SETT.name || ''; state.studentClass = canonicalizeClass(SETT.cls || ''); state.studentNumber = SETT.studentNumber || '';
 if(location.hash === '#teacher') state.screen = 'teacher';

@@ -76,7 +76,7 @@
         f("indicators", "مؤشرات الزيارة (المؤشر 1–8)", "ratings", { items: VISIT_IND, options: RATING, span: 2, cols: ["indicator1", "indicator2", "indicator3", "indicator4", "indicator5", "indicator6", "indicator7", "indicator8"] }),
         A("positivePoints", "أبرز النقاط الإيجابية", { span: 2 }), T("visitorSignature", "المعلم/ة الزائر (توقيع)"), T("visitedSignature", "المعلم/ة المراد زيارته (توقيع)"),
         T("deputySignature", "وكيل الشؤون التعليمية"), T("principalSignature", "مدير/ة المدرسة")]) },
-    { id: "learning-pattern", group: "الأداء التعليمي", icon: "🧠", title: "تحليل أنماط التعلم", table: "learning_pattern_analysis", std: [10, 4], cat: "analysis-assessment", titleOf: ["school"], titlePrefix: "تحليل أنماط التعلم — ",
+    { id: "learning-pattern", group: "الأداء التعليمي", icon: "🧠", title: "تحليل أنماط التعلم", table: "learning_pattern_analysis", std: [8, 10, 4], cat: "analysis-assessment", titleOf: ["school"], titlePrefix: "تحليل أنماط التعلم — ",
       list: ["school", "totalStudents"], fields: EDU.concat([
         T("school", "المدرسة"), A("studentNames", "أسماء الطلاب/ات", { span: 2 }), N("visualCount", "النمط البصري"), N("auditoryCount", "النمط السمعي"),
         N("readWriteCount", "نمط الكتابة والقراءة"), N("kinestheticCount", "النمط الحركي"), N("totalStudents", "إجمالي الطلاب/ات")]) },
@@ -160,6 +160,20 @@
         L("strengthPoints", "نقاط القوة", ["التمهيد الجيد للدرس وجذب انتباه الطلاب/ات.", "استخدام فعال لاستراتيجيات التعلم النشط.", "التفاعل الإيجابي بين المعلم/ة والطلاب/ات.", "إدارة وقت الحصة بكفاءة.", "تحقيق أهداف الدرس بوضوح."], { span: 2 }),
         L("discussionPoints", "نقاط النقاش", ["تنويع أساليب التقويم الختامي.", "زيادة فرص التفكير الناقد للطلاب.", "اقتراح استخدام وسيلة (...) للدرس القادم."], { span: 2 }),
         L("recommendations", "التوصيات", ["تعميم الممارسة المتميزة (ذكر الممارسة).", "عقد ورشة عمل مصغرة لنقل الخبرة.", "الاستمرار في الزيارات التبادلية."], { span: 2 })] },
+
+    // ===================== التقنية والوسائط التفاعلية =====================
+    { id: "canva-report", group: "التقنية والوسائط التفاعلية", icon: "🖌️", title: "تقرير Canva", table: "canva_report", std: [7, 4], cat: "executive-reports", titleOf: ["lessonTitle"], titlePrefix: "تقرير Canva — ", dateField: "executionDate",
+      list: ["subject", "grade", "executionDate"], fields: EDU.concat([
+        T("lessonTitle", "عنوان الدرس / المحتوى"), T("subject", "المادة"), T("grade", "الصف"), D("executionDate", "تاريخ التنفيذ"), N("targetCount", "عدد المستفيدين"), T("link", "رابط العمل على Canva"),
+        A("goals", "الأهداف", { span: 2 }), A("description", "وصف التنفيذ", { span: 2 }), A("impact", "الأثر على المتعلمين", { span: 2 }), IMG("evidenceImage", "صورة الشاهد")]) },
+    { id: "genially-report", group: "التقنية والوسائط التفاعلية", icon: "🎨", title: "تقرير Genially", table: "genially_report", std: [7, 4], cat: "executive-reports", titleOf: ["lessonTitle"], titlePrefix: "تقرير Genially — ", dateField: "executionDate",
+      list: ["subject", "grade", "executionDate"], fields: EDU.concat([
+        T("lessonTitle", "عنوان الدرس / المحتوى"), T("subject", "المادة"), T("grade", "الصف"), D("executionDate", "تاريخ التنفيذ"), N("targetCount", "عدد المستفيدين"), T("link", "رابط العمل على Genially"),
+        A("goals", "الأهداف", { span: 2 }), A("description", "وصف التنفيذ", { span: 2 }), A("impact", "الأثر على المتعلمين", { span: 2 }), IMG("evidenceImage", "صورة الشاهد")]) },
+    { id: "thinglink-report", group: "التقنية والوسائط التفاعلية", icon: "🔗", title: "تقرير ThingLink", table: "thinglink_report", std: [7, 8], cat: "executive-reports", titleOf: ["lessonTitle"], titlePrefix: "تقرير ThingLink — ", dateField: "executionDate",
+      list: ["subject", "grade", "executionDate"], fields: EDU.concat([
+        T("lessonTitle", "عنوان الدرس / المحتوى"), T("subject", "المادة"), T("grade", "الصف"), D("executionDate", "تاريخ التنفيذ"), N("targetCount", "عدد المستفيدين"), T("link", "رابط العمل على ThingLink"),
+        A("goals", "الأهداف", { span: 2 }), A("description", "وصف التنفيذ", { span: 2 }), A("impact", "الأثر على المتعلمين", { span: 2 }), IMG("evidenceImage", "صورة الشاهد")]) },
 
     // ===================== التقييم =====================
     { id: "self-assessment", group: "التقييم", icon: "🪞", title: "التقييم الذاتي", table: "self_assessments", std: [1], cat: "analysis-assessment", titleOf: ["title"], dateField: "assessmentDate",

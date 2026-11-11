@@ -77,7 +77,7 @@
 
   var MAX_FILE = 600 * 1024;   // حد الملف المخزّن داخل قاعدة البيانات (الصور تُضغط تلقائيًا)
 
-  var PF = { items: [], profile: {}, cv: {}, tab: "overview", reportStd: 0, fStd: 0, fCat: "", q: "", editing: null, loaded: false, loading: false, msg: "", msgOk: true, workspaceModule: "evidence-arm", workspaceEditing: null, workspaceQ: "" };
+  var PF = { items: [], profile: {}, cv: {}, tab: "hub", reportStd: 0, fStd: 0, fCat: "", q: "", editing: null, loaded: false, loading: false, msg: "", msgOk: true, workspaceModule: "evidence-arm", workspaceEditing: null, workspaceQ: "" };
 
   function catOf(id) { for (var i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i].id === id) return CATEGORIES[i]; return null; }
   function stdOf(id) { for (var i = 0; i < STANDARDS.length; i++) if (STANDARDS[i].id === id) return STANDARDS[i]; return null; }
@@ -86,6 +86,7 @@
   function today() { return new Date().toISOString().slice(0, 10); }
   function isAdmin() {
     var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+    if (typeof isTeacherAuthorized === 'function') return isTeacherAuthorized();
     return !!(u && u.email === ADMIN_EMAIL);
   }
   function say(t, ok) { PF.msg = t; PF.msgOk = ok !== false; var el = $("pf-msg"); if (el) { el.textContent = t; el.style.color = PF.msgOk ? "#0e8f5f" : "#e11d48"; } }
@@ -718,8 +719,8 @@
       if (q && ((x.title || "") + " " + (x.description || "")).toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
-    var catChips = '<button class="chip ' + (PF.fCat === "" ? "active" : "") + '" onclick="window.PFui.setCat(\'\')">الكل</button>' +
-      CATEGORIES.map(function (c) { return '<button class="chip ' + (PF.fCat === c.id ? "active" : "") + '" onclick="window.PFui.setCat(\'' + c.id + '\')">' + c.icon + ' ' + c.label + '</button>'; }).join("");
+    var catChips = '<button class="subchip ' + (PF.fCat === "" ? "active" : "") + '" onclick="window.PFui.setCat(\'\')">الكل</button>' +
+      CATEGORIES.map(function (c) { return '<button class="subchip ' + (PF.fCat === c.id ? "active" : "") + '" onclick="window.PFui.setCat(\'' + c.id + '\')">' + c.icon + ' ' + c.label + '</button>'; }).join("");
     var stdOpts = '<option value="0">كل المعايير</option>' + STANDARDS.map(function (s) { return '<option value="' + s.id + '" ' + (PF.fStd === s.id ? "selected" : "") + '>' + s.id + '. ' + esc(s.title) + '</option>'; }).join("");
     var rows = list.map(function (x) {
       var c = catOf(x.category);
@@ -733,7 +734,7 @@
         '<div class="flex gap-1"><button class="btn btn-outline text-xs py-1 px-2" onclick="window.PFui.edit(\'' + x.id + '\')">✏️</button>' +
         '<button class="btn btn-outline text-xs py-1 px-2" onclick="window.PFui.del(\'' + x.id + '\')">🗑️</button></div></div></div>';
     }).join("");
-    return '<div class="flex gap-2 flex-wrap mb-2">' + catChips + '</div>' +
+    return '<div class="subtabs mb-3"><div class="subtabs-lbl">🔎 تصفية الشواهد حسب التصنيف</div><div class="flex gap-1.5 flex-wrap">' + catChips + '</div></div>' +
       '<div class="flex gap-2 mb-3"><select class="border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)" onchange="window.PFui.setStd(this.value)">' + stdOpts + '</select>' +
       '<input class="flex-1 border rounded-xl px-3 py-2 bg-transparent text-sm" style="border-color:var(--line)" placeholder="🔍 بحث في الشواهد" value="' + esc(PF.q) + '" oninput="window.PFui.setQ(this.value)"></div>' +
       '<div class="text-xs mb-2" style="color:var(--sub)">' + list.length + ' شاهد</div>' +
@@ -792,7 +793,7 @@
   }
   function ensureStd11(cb) {
     if (window.Std11) { cb(); return; }
-    var a = document.createElement("script"); a.src = "std11.js?v=2"; a.onload = cb;
+    var a = document.createElement("script"); a.src = "std11.js?v=4"; a.onload = cb;
     a.onerror = function () { var r = $("std11-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل std11.js — تأكد من رفعه بجانب portfolio.js مع std11-data.js و ready-forms-data.js.</div>'; };
     document.body.appendChild(a);
   }
@@ -801,7 +802,7 @@
     function fail() { var r = $("forms-root"); if (r) r.innerHTML = '<div class="card p-6 text-center">تعذّر تحميل ملفات النماذج أو القوالب التخصصية — تأكد من رفعها بجانب portfolio.js.</div>'; }
     var p = document.createElement("script"); p.src = "prepared-data.js?v=21";
     p.onload = function () {
-      var a = document.createElement("script"); a.src = "forms-catalog.js?v=2";
+      var a = document.createElement("script"); a.src = "forms-catalog.js?v=3";
       a.onload = function () {
         var t = document.createElement("script"); t.src = "specialized-templates.js?v=21";
         t.onload = function () { var b = document.createElement("script"); b.src = "forms.js?v=21"; b.onload = cb; b.onerror = fail; document.body.appendChild(b); };
@@ -832,14 +833,25 @@
   var preStdForm = 0;
   function draw() {
     if (!isAdmin()) { drawLogin(); return; }
+    var cu = firebase.auth().currentUser; if (PF.uid !== cu.uid) { PF.uid = cu.uid; PF.loaded = false; PF.loading = false; PF.items = []; PF.profile = {}; PF.cv = {}; PF.tab = 'hub'; }
     if (!PF.loaded) { app.innerHTML = '<div class="card p-8 text-center mt-10">جارٍ تحميل ملف الإنجاز…</div>'; if (!PF.loading) load().then(draw); return; }
-    var tabs = [["overview", "🏠 المعايير"], ["evidence", "📎 الشواهد"], ["plans", "🩹 الخطط العلاجية والإثرائية"], ["cv", "👤 السيرة الذاتية"], ["form", "➕ إضافة شاهد"], ["report", "🖨️ التقرير"], ["file11", "🏆 ملف إنجاز الأداء الوظيفي"], ["record", "📑 سجل توثيق الشواهد"], ["ready", "🧾 شواهد جاهزة"], ["forms", "📚 النماذج المتخصصة"], ["workspace", "🗂️ أقسام الملف الموسعة"]];
-    var body = PF.tab === "overview" ? viewOverview() : PF.tab === "standard-report" ? viewStandardReport() : PF.tab === "evidence" ? viewEvidence() : PF.tab === "plans" ? '<div id="plans-root"><div class="card p-6 text-center">جارٍ تحميل الخطط…</div></div>' : PF.tab === "cv" ? viewCV() : PF.tab === "form" ? viewForm(preStdForm) : (PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready") ? '<div id="std11-root"><div class="card p-6 text-center">جارٍ التحميل…</div></div>' : PF.tab === "forms" ? '<div id="forms-root"><div class="card p-6 text-center">جارٍ تحميل النماذج…</div></div>' : PF.tab === "workspace" ? workspaceView() : viewReport();
-    app.innerHTML = '<div class="fade-in ' + (PF.tab === "forms" || PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready" ? "max-w-5xl" : "max-w-3xl") + ' mx-auto"><div class="flex items-center justify-between mb-3 mt-2"><h1 class="font-extrabold text-xl">📁 ملف إنجاز المعلم/ة</h1>' +
+    var tabs = [["overview", "🏠", "المعايير", "لوحة متابعة المعايير الـ11 وتغطيتها"], ["evidence", "📎", "الشواهد", "استعراض الشواهد وتصفيتها حسب التصنيف"], ["form", "➕", "إضافة شاهد", "رفع شاهد جديد وربطه بالمعايير"], ["file11", "🏆", "ملف إنجاز الأداء الوظيفي", "الملف الكامل — طباعة وتنزيل PDF"], ["record", "📑", "سجل توثيق الشواهد", "سجل التوثيق — طباعة وتنزيل PDF"], ["ready", "🧾", "شواهد جاهزة", "شواهد معدّة مسبقاً للمعايير"], ["plans", "🩹", "الخطط العلاجية والإثرائية", "خطط الطلاب المتعثرين والمتميزين"], ["cv", "👤", "السيرة الذاتية", "البيانات الشخصية والعلمية"], ["report", "🖨️", "التقرير", "تقرير شامل لملف الإنجاز"], ["forms", "📚", "النماذج المتخصصة", "نماذج جاهزة للتعبئة"], ["workspace", "🗂️", "أقسام الملف الموسعة", "أقسام إضافية للملف"]];
+    var wide = PF.tab === "hub" || PF.tab === "forms" || PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready";
+    var body, nav;
+    if (PF.tab === "hub") {
+      body = '<p class="text-sm mb-3" style="color:var(--sub)">اختر القسم الذي تريد العمل عليه:</p><div class="hub-grid">' + tabs.map(function (t) { return '<button class="hub-card" onclick="window.PFui.tab(\'' + t[0] + '\')"><span class="hub-ic">' + t[1] + '</span><span class="hub-t">' + t[2] + '</span><span class="hub-d">' + t[3] + '</span></button>'; }).join("") + '</div>';
+      nav = '';
+    } else {
+      var cur = PF.tab === "standard-report" ? ["standard-report", "📊", "تقرير المعيار"] : (tabs.filter(function (t) { return t[0] === PF.tab; })[0] || tabs[0]);
+      var backTo = PF.tab === "standard-report" ? "overview" : "hub";
+      var crumb = PF.tab === "standard-report" ? '<button class="crumb-link" onclick="window.PFui.tab(\'hub\')">الأقسام</button><span class="crumb-sep">‹</span><button class="crumb-link" onclick="window.PFui.tab(\'overview\')">المعايير</button><span class="crumb-sep">‹</span>' : '<button class="crumb-link" onclick="window.PFui.tab(\'hub\')">الأقسام</button><span class="crumb-sep">‹</span>';
+      nav = '<div class="section-bar"><div class="flex items-center gap-2 min-w-0"><button class="sec-back" title="رجوع" onclick="window.PFui.tab(\'' + backTo + '\')">→ رجوع</button><div class="min-w-0"><div class="crumbs">' + crumb + '</div><div class="sec-title">' + cur[1] + ' ' + cur[2] + '</div></div></div><button class="sec-close" title="إغلاق القسم" onclick="window.PFui.tab(\'hub\')">✕ إغلاق</button></div>';
+      body = PF.tab === "overview" ? viewOverview() : PF.tab === "standard-report" ? viewStandardReport() : PF.tab === "evidence" ? viewEvidence() : PF.tab === "plans" ? '<div id="plans-root"><div class="card p-6 text-center">جارٍ تحميل الخطط…</div></div>' : PF.tab === "cv" ? viewCV() : PF.tab === "form" ? viewForm(preStdForm) : (PF.tab === "file11" || PF.tab === "record" || PF.tab === "ready") ? '<div id="std11-root"><div class="card p-6 text-center">جارٍ التحميل…</div></div>' : PF.tab === "forms" ? '<div id="forms-root"><div class="card p-6 text-center">جارٍ تحميل النماذج…</div></div>' : PF.tab === "workspace" ? workspaceView() : viewReport();
+    }
+    app.innerHTML = '<div class="fade-in ' + (wide ? "max-w-5xl" : "max-w-3xl") + ' mx-auto"><div class="flex items-center justify-between mb-3 mt-2"><h1 class="font-extrabold text-xl">📁 ملف إنجاز المعلم/ة</h1>' +
       '<div class="flex gap-2"><button onclick="state.screen=\'admin\';render()" class="btn btn-outline text-sm py-2 px-3">⚙️ الإعدادات</button>' +
-      '<button onclick="state.screen=\'setup\';render()" class="btn btn-outline text-sm py-2 px-3">رجوع</button></div></div>' +
-      '<div class="flex gap-2 mb-3 flex-wrap">' + tabs.map(function (t) { return '<button class="chip ' + (PF.tab === t[0] ? "active" : "") + '" onclick="window.PFui.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join("") + '</div>' +
-      '<div id="pf-msg" class="text-sm mb-2" style="color:' + (PF.msgOk ? "#0e8f5f" : "#e11d48") + '">' + esc(PF.msg || "") + '</div>' + body + '</div>';
+      '<button onclick="state.screen=\'setup\';render()" class="btn btn-outline text-sm py-2 px-3">خروج</button></div></div>' + nav +
+      '<div id="pf-msg" class="text-sm mb-2" style="color:' + (PF.msgOk ? "#0e8f5f" : "#e11d48") + '">' + esc(PF.msg || "") + '</div><div class="sec-body">' + body + '</div></div>';
     PF.msg = "";
     if (PF.tab === "form") hint();
     if (PF.tab === "plans") ensurePlans(function () { window.PlansUI.mount($("plans-root")); });
